@@ -1,0 +1,850 @@
+openapi: 3.0.3
+info:
+  title: Auth Server API
+  description: |
+    Auth Server trung tâm được xây dựng bằng Rust để quản lý xác thực và phân quyền cho nhiều hệ thống con (App).
+    
+    ## Features
+    - User registration and authentication
+    - JWT-based authentication with RS256 algorithm
+    - Token refresh mechanism
+    - Password reset flow
+    - Multi-app support with scoped roles and permissions
+    - Role-Based Access Control (RBAC)
+    
+    ## Authentication
+    Protected endpoints require a valid JWT token in the Authorization header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+  version: 1.0.0
+  contact:
+    name: Auth Server Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication operations (public endpoints)
+  - name: Apps
+    description: App management operations (protected endpoints)
+  - name: Roles
+    description: Role management operations (protected endpoints)
+  - name: Permissions
+    description: Permission management operations (protected endpoints)
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: |
+        Create a new user account with email and password.
+        
+        Requirements: 14.1, 1.1-1.5
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: "user@example.com"
+              password: "SecurePassword123!"
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Invalid email format or weak password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_email:
+                  summary: Invalid email format
+                  value:
+                    error: "invalid_email"
+                    message: "Invalid email format"
+                    status_code: 400
+                weak_password:
+                  summary: Weak password
+                  value:
+                    error: "weak_password"
+                    message: "Password does not meet requirements"
+                    status_code: 400
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "email_exists"
+                message: "Email already exists"
+                status_code: 409
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user
+      description: |
+        Authenticate user with email and password, returns JWT access token and refresh token.
+        
+        Requirements: 14.2, 2.1-2.5
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: "user@example.com"
+              password: "SecurePassword123!"
+      responses:
+        '200':
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "invalid_credentials"
+                message: "Invalid credentials"
+                status_code: 401
+        '403':
+          description: User is inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "user_inactive"
+                message: "User is inactive"
+                status_code: 403
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: |
+        Get a new access token using a valid refresh token.
+        
+        Requirements: 14.3, 3.1-3.3
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refresh_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Token successfully refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_token:
+                  summary: Invalid token
+                  value:
+                    error: "invalid_token"
+                    message: "Invalid token"
+                    status_code: 401
+                token_expired:
+                  summary: Token expired
+                  value:
+                    error: "token_expired"
+                    message: "Token expired"
+                    status_code: 401
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Initiate password reset
+      description: |
+        Request a password reset token. For security, the response is always the same
+        regardless of whether the email exists in the system.
+        
+        Requirements: 14.4, 4.1-4.2
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+            example:
+              email: "user@example.com"
+      responses:
+        '200':
+          description: Password reset initiated (response is always the same for security)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: "If the email exists, a password reset link has been sent."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Complete password reset
+      description: |
+        Reset password using a valid reset token.
+        
+        Requirements: 14.5, 4.3-4.4
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            example:
+              token: "reset-token-uuid"
+              new_password: "NewSecurePassword123!"
+      responses:
+        '200':
+          description: Password successfully reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: "Password has been reset successfully."
+        '401':
+          description: Invalid or expired reset token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "invalid_token"
+                message: "Invalid token"
+                status_code: 401
+        '400':
+          description: Weak password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "weak_password"
+                message: "Password does not meet requirements"
+                status_code: 400
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /apps:
+    post:
+      tags:
+        - Apps
+      summary: Create a new app
+      description: |
+        Register a new app in the system. Requires authentication.
+        
+        Requirements: 14.6, 5.1-5.2
+      operationId: createApp
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppRequest'
+            example:
+              code: "my-app"
+              name: "My Application"
+      responses:
+        '201':
+          description: App successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppResponse'
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: App code already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "app_code_exists"
+                message: "App code already exists"
+                status_code: 409
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /apps/{app_id}/roles:
+    post:
+      tags:
+        - Roles
+      summary: Create a new role for an app
+      description: |
+        Create a new role scoped to a specific app. Requires authentication.
+        
+        Requirements: 14.7, 6.1-6.2
+      operationId: createRole
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          description: UUID of the app
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+            example:
+              name: "admin"
+      responses:
+        '201':
+          description: Role successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: App not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "app_not_found"
+                message: "App not found"
+                status_code: 404
+        '409':
+          description: Role name already exists in this app
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "role_name_exists"
+                message: "Role name already exists in this app"
+                status_code: 409
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /apps/{app_id}/permissions:
+    post:
+      tags:
+        - Permissions
+      summary: Create a new permission for an app
+      description: |
+        Create a new permission scoped to a specific app. Requires authentication.
+        
+        Requirements: 14.8, 7.1-7.2
+      operationId: createPermission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          description: UUID of the app
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePermissionRequest'
+            example:
+              code: "read:users"
+      responses:
+        '201':
+          description: Permission successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionResponse'
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: App not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "app_not_found"
+                message: "App not found"
+                status_code: 404
+        '409':
+          description: Permission code already exists in this app
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "permission_code_exists"
+                message: "Permission code already exists in this app"
+                status_code: 409
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /apps/{app_id}/users/{user_id}/roles:
+    post:
+      tags:
+        - Roles
+      summary: Assign a role to a user
+      description: |
+        Assign a role to a user within a specific app. Requires authentication.
+        
+        Requirements: 14.9, 8.1-8.2
+      operationId: assignRoleToUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          description: UUID of the app
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the user
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRoleRequest'
+            example:
+              role_id: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '204':
+          description: Role successfully assigned to user
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: App, user, or role not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                app_not_found:
+                  summary: App not found
+                  value:
+                    error: "app_not_found"
+                    message: "App not found"
+                    status_code: 404
+                user_not_found:
+                  summary: User not found
+                  value:
+                    error: "user_not_found"
+                    message: "User not found"
+                    status_code: 404
+                role_not_found:
+                  summary: Role not found
+                  value:
+                    error: "role_not_found"
+                    message: "Role not found"
+                    status_code: 404
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from /auth/login endpoint.
+        Token is signed using RS256 algorithm.
+
+  schemas:
+    # Request Schemas
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address (must be unique)
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: User's password (must meet security requirements)
+          example: "SecurePassword123!"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          description: User's password
+          example: "SecurePassword123!"
+
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Valid refresh token obtained from login
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address associated with the account
+          example: "user@example.com"
+
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - new_password
+      properties:
+        token:
+          type: string
+          description: Password reset token received via email
+          example: "reset-token-uuid"
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          description: New password (must meet security requirements)
+          example: "NewSecurePassword123!"
+
+    CreateAppRequest:
+      type: object
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+          maxLength: 50
+          pattern: "^[a-z0-9-]+$"
+          description: Unique app code (lowercase alphanumeric with hyphens)
+          example: "my-app"
+        name:
+          type: string
+          maxLength: 255
+          description: Human-readable app name
+          example: "My Application"
+
+    CreateRoleRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Role name (must be unique within the app)
+          example: "admin"
+
+    CreatePermissionRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          maxLength: 100
+          description: Permission code (must be unique within the app)
+          example: "read:users"
+
+    AssignRoleRequest:
+      type: object
+      required:
+        - role_id
+      properties:
+        role_id:
+          type: string
+          format: uuid
+          description: UUID of the role to assign
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    # Response Schemas
+    RegisterResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token (expires in 15 minutes)
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          description: JWT refresh token (longer expiry)
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          description: Token type (always "Bearer")
+          example: "Bearer"
+        expires_in:
+          type: integer
+          format: int64
+          description: Access token expiry time in seconds
+          example: 900
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Response message
+          example: "Operation completed successfully."
+
+    AppResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique app identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        code:
+          type: string
+          description: Unique app code
+          example: "my-app"
+        name:
+          type: string
+          description: App name
+          example: "My Application"
+
+    RoleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique role identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        app_id:
+          type: string
+          format: uuid
+          description: ID of the app this role belongs to
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        name:
+          type: string
+          description: Role name
+          example: "admin"
+
+    PermissionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique permission identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        app_id:
+          type: string
+          format: uuid
+          description: ID of the app this permission belongs to
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        code:
+          type: string
+          description: Permission code
+          example: "read:users"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: "invalid_credentials"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid credentials"
+        status_code:
+          type: integer
+          description: HTTP status code
+          example: 401
+
+    # JWT Claims Schema (for documentation purposes)
+    JwtClaims:
+      type: object
+      description: JWT token payload structure
+      properties:
+        sub:
+          type: string
+          format: uuid
+          description: Subject (user ID)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        apps:
+          type: object
+          description: Map of app codes to app claims
+          additionalProperties:
+            $ref: '#/components/schemas/AppClaims'
+        exp:
+          type: integer
+          format: int64
+          description: Expiration timestamp (Unix epoch)
+          example: 1703865600
+        iat:
+          type: integer
+          format: int64
+          description: Issued at timestamp (Unix epoch)
+          example: 1703864700
+
+    AppClaims:
+      type: object
+      description: Claims for a specific app within the JWT
+      properties:
+        roles:
+          type: array
+          items:
+            type: string
+          description: List of role names the user has in this app
+          example: ["admin", "user"]
+        permissions:
+          type: array
+          items:
+            type: string
+          description: List of permission codes the user has in this app
+          example: ["read:users", "write:users"]

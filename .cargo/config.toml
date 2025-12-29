@@ -1,0 +1,22 @@
+[alias]
+b = "build"
+r = "run"
+t = "test"
+c = "check"
+br = "build --release"
+lint = "clippy -- -D warnings"
+build-linux = "build --release --target x86_64-unknown-linux-gnu"
+build-win = "build --release --target x86_64-pc-windows-msvc"
+
+[build]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,relro",
+  "-C", "link-arg=-Wl,-z,now"
+]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+  "-C", "target-feature=+crt-static"
+]

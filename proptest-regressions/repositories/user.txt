@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 52965a9df1ce32d88dedf42ed741582603bf172b0e812de63e12d53973cb1e45 # shrinks to email = "aaa@aaa.com", password_hash1 = "$argon2id$v=19$m=19456,t=2,p=1$a0AAAa0000aaA00A0aAaAaaAaa0AAAaaAaaAA000AaA0a0Aaaa0aAaaaAAa0", password_hash2 = "$argon2id$v=19$m=19456,t=2,p=1$00A0aaAAaaaa0AA0AAAAA00A0aaAA0aaA0a0Aa0A0AXY79uR09Y5WvBPXhwk"
