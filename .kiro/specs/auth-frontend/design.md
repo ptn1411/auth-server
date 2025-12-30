@@ -2,37 +2,39 @@
 
 ## Overview
 
-Auth Frontend là một Single Page Application (SPA) được xây dựng với Vite + React + TypeScript. Ứng dụng sử dụng React Router cho navigation, React Query cho state management và API calls, và Tailwind CSS + shadcn/ui cho UI components.
+Auth Frontend là ứng dụng React được xây dựng với Vite, sử dụng shadcn/ui cho UI components và tích hợp SDK TypeScript để giao tiếp với Auth Server. Ứng dụng cung cấp đầy đủ các tính năng xác thực bao gồm đăng ký, đăng nhập, MFA, passkey, và quản lý tài khoản.
 
 ## Architecture
 
-```mermaid
-graph TB
-    subgraph "Auth Frontend"
-        subgraph "Presentation Layer"
-            Pages[Pages/Views]
-            Components[UI Components]
-        end
-        
-        subgraph "State Management"
-            AuthContext[Auth Context]
-            ReactQuery[React Query Cache]
-        end
-        
-        subgraph "Services Layer"
-            APIClient[API Client]
-            TokenManager[Token Manager]
-            AuthService[Auth Service]
-        end
-    end
-    
-    Pages --> Components
-    Pages --> AuthContext
-    Pages --> ReactQuery
-    AuthContext --> TokenManager
-    ReactQuery --> APIClient
-    APIClient --> TokenManager
-    APIClient --> Backend[Auth Server API]
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Auth Frontend                            │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Pages     │  │ Components  │  │    Hooks            │  │
+│  │  - Login    │  │ - Forms     │  │ - useAuthStore      │  │
+│  │  - Register │  │ - Layout    │  │ - useAuthClient     │  │
+│  │  - Dashboard│  │ - UI        │  │ - useWebAuthn       │  │
+│  │  - Profile  │  │             │  │                     │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                Zustand Auth Store                       ││
+│  │  - User state, tokens, authentication actions           ││
+│  │  - Persist middleware for token storage                 ││
+│  └─────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                   Auth SDK Client                       ││
+│  │  - API calls, token management, error handling          ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │   Auth Server   │
+                    │      API        │
+                    └─────────────────┘
 ```
 
 ## Components and Interfaces
@@ -43,529 +45,406 @@ graph TB
 frontend/
 ├── src/
 │   ├── components/
-│   │   ├── ui/              # shadcn/ui components
-│   │   ├── layout/          # Layout components
+│   │   ├── ui/                    # shadcn/ui components
+│   │   ├── layout/
 │   │   │   ├── Header.tsx
 │   │   │   ├── Sidebar.tsx
-│   │   │   └── MainLayout.tsx
-│   │   └── forms/           # Form components
-│   │       ├── LoginForm.tsx
-│   │       ├── RegisterForm.tsx
-│   │       └── AppForm.tsx
-│   ├── pages/
+│   │   │   └── Layout.tsx
 │   │   ├── auth/
-│   │   │   ├── LoginPage.tsx
-│   │   │   ├── RegisterPage.tsx
-│   │   │   ├── ForgotPasswordPage.tsx
-│   │   │   └── ResetPasswordPage.tsx
-│   │   ├── dashboard/
-│   │   │   └── DashboardPage.tsx
-│   │   ├── apps/
-│   │   │   ├── AppsPage.tsx
-│   │   │   └── AppDetailPage.tsx
-│   │   └── NotFoundPage.tsx
-│   ├── services/
-│   │   ├── api.ts           # Axios instance with interceptors
-│   │   ├── auth.ts          # Auth API calls
-│   │   ├── apps.ts          # Apps API calls
-│   │   ├── roles.ts         # Roles API calls
-│   │   └── permissions.ts   # Permissions API calls
+│   │   │   ├── LoginForm.tsx
+│   │   │   ├── RegisterForm.tsx
+│   │   │   ├── MfaForm.tsx
+│   │   │   ├── ForgotPasswordForm.tsx
+│   │   │   └── ResetPasswordForm.tsx
+│   │   ├── profile/
+│   │   │   ├── ProfileCard.tsx
+│   │   │   ├── ChangePasswordForm.tsx
+│   │   │   └── UpdateProfileForm.tsx
+│   │   ├── security/
+│   │   │   ├── SessionList.tsx
+│   │   │   ├── MfaSetup.tsx
+│   │   │   ├── PasskeyList.tsx
+│   │   │   └── PasskeyRegister.tsx
+│   │   └── dashboard/
+│   │       ├── DashboardStats.tsx
+│   │       └── RecentActivity.tsx
+│   ├── pages/
+│   │   ├── LoginPage.tsx
+│   │   ├── RegisterPage.tsx
+│   │   ├── ForgotPasswordPage.tsx
+│   │   ├── ResetPasswordPage.tsx
+│   │   ├── VerifyEmailPage.tsx
+│   │   ├── DashboardPage.tsx
+│   │   ├── ProfilePage.tsx
+│   │   ├── SessionsPage.tsx
+│   │   ├── SecurityPage.tsx
+│   │   └── AuditLogsPage.tsx
 │   ├── hooks/
-│   │   ├── useAuth.ts       # Auth context hook
-│   │   └── useApi.ts        # React Query hooks
-│   ├── contexts/
-│   │   └── AuthContext.tsx  # Auth state management
-│   ├── types/
-│   │   └── index.ts         # TypeScript interfaces
+│   │   ├── useAuthClient.ts
+│   │   └── useWebAuthn.ts
+│   ├── stores/
+│   │   ├── authStore.ts
+│   │   └── themeStore.ts
 │   ├── lib/
-│   │   └── utils.ts         # Utility functions
+│   │   ├── auth-client.ts
+│   │   └── utils.ts
 │   ├── App.tsx
-│   └── main.tsx
-├── index.html
-├── tailwind.config.js
+│   ├── main.tsx
+│   └── index.css
+├── package.json
 ├── vite.config.ts
-└── package.json
+├── tailwind.config.js
+├── tsconfig.json
+└── components.json
 ```
 
 ### Core Interfaces
 
 ```typescript
-// types/index.ts
-
-// Auth Types
-interface User {
-  id: string;
-  email: string;
-}
-
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-}
-
-interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-interface RegisterRequest {
-  email: string;
-  password: string;
-}
-
-interface ForgotPasswordRequest {
-  email: string;
-}
-
-interface ResetPasswordRequest {
-  token: string;
-  new_password: string;
-}
-
-// App Types
-interface App {
-  id: string;
-  code: string;
-  name: string;
-}
-
-interface CreateAppRequest {
-  code: string;
-  name: string;
-}
-
-// Role Types
-interface Role {
-  id: string;
-  app_id: string;
-  name: string;
-}
-
-interface CreateRoleRequest {
-  name: string;
-}
-
-// Permission Types
-interface Permission {
-  id: string;
-  app_id: string;
-  code: string;
-}
-
-interface CreatePermissionRequest {
-  code: string;
-}
-
-// Error Types
-interface ApiError {
-  error: string;
-  message: string;
-  status_code: number;
-}
-
-// Auth Context Types
+// Zustand Auth Store
 interface AuthState {
-  user: User | null;
+  user: UserProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  mfaPending: MfaRequiredResponse | null;
 }
 
-interface AuthContextType extends AuthState {
-  login: (credentials: LoginRequest) => Promise<void>;
-  register: (data: RegisterRequest) => Promise<void>;
-  logout: () => void;
-  refreshToken: () => Promise<void>;
+interface AuthActions {
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  completeMfa: (code: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
+  setUser: (user: UserProfile | null) => void;
+  setLoading: (loading: boolean) => void;
+  clearMfaPending: () => void;
 }
-```
 
-### API Client
+type AuthStore = AuthState & AuthActions;
 
-```typescript
-// services/api.ts
-import axios from 'axios';
+// Zustand Store Implementation
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const useAuthStore = create<AuthStore>()(
+  persist(
+    (set, get) => ({
+      // State
+      user: null,
+      isAuthenticated: false,
+      isLoading: true,
+      mfaPending: null,
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+      // Actions
+      login: async (email, password) => {
+        set({ isLoading: true });
+        const response = await authClient.login({ email, password });
+        if ('mfa_required' in response) {
+          set({ mfaPending: response, isLoading: false });
+        } else {
+          const user = await authClient.getProfile();
+          set({ user, isAuthenticated: true, isLoading: false });
+        }
+      },
 
-// Request interceptor - attach token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+      register: async (email, password) => {
+        set({ isLoading: true });
+        await authClient.register({ email, password });
+        set({ isLoading: false });
+      },
 
-// Response interceptor - handle token refresh
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
+      logout: async () => {
+        await authClient.logout();
+        set({ user: null, isAuthenticated: false, mfaPending: null });
+      },
+
+      completeMfa: async (code) => {
+        const { mfaPending } = get();
+        if (!mfaPending) throw new Error('No MFA pending');
+        set({ isLoading: true });
+        await authClient.completeMfaLogin({ 
+          mfa_token: mfaPending.mfa_token, 
+          code 
         });
-        
-        const { access_token, refresh_token } = response.data;
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('refresh_token', refresh_token);
-        
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+        const user = await authClient.getProfile();
+        set({ user, isAuthenticated: true, mfaPending: null, isLoading: false });
+      },
+
+      refreshUser: async () => {
+        const user = await authClient.getProfile();
+        set({ user });
+      },
+
+      setUser: (user) => set({ user, isAuthenticated: !!user }),
+      setLoading: (isLoading) => set({ isLoading }),
+      clearMfaPending: () => set({ mfaPending: null }),
+    }),
+    {
+      name: 'auth-storage',
+      partialize: (state) => ({ 
+        isAuthenticated: state.isAuthenticated 
+      }),
     }
-    
-    return Promise.reject(error);
-  }
+  )
 );
 
-export default api;
-```
-
-### Auth Context
-
-```typescript
-// contexts/AuthContext.tsx
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { jwtDecode } from 'jwt-decode';
-import * as authService from '../services/auth';
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    isAuthenticated: false,
-    isLoading: true,
-  });
-
-  useEffect(() => {
-    // Check for existing token on mount
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      try {
-        const decoded = jwtDecode<{ sub: string; exp: number }>(token);
-        if (decoded.exp * 1000 > Date.now()) {
-          setState({
-            user: { id: decoded.sub, email: '' },
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } else {
-          // Token expired, try refresh
-          refreshToken();
-        }
-      } catch {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        setState({ user: null, isAuthenticated: false, isLoading: false });
-      }
-    } else {
-      setState({ user: null, isAuthenticated: false, isLoading: false });
-    }
-  }, []);
-
-  const login = async (credentials: LoginRequest) => {
-    const response = await authService.login(credentials);
-    localStorage.setItem('access_token', response.access_token);
-    localStorage.setItem('refresh_token', response.refresh_token);
-    
-    const decoded = jwtDecode<{ sub: string }>(response.access_token);
-    setState({
-      user: { id: decoded.sub, email: credentials.email },
-      isAuthenticated: true,
-      isLoading: false,
-    });
-  };
-
-  const register = async (data: RegisterRequest) => {
-    await authService.register(data);
-  };
-
-  const logout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    setState({ user: null, isAuthenticated: false, isLoading: false });
-  };
-
-  const refreshToken = async () => {
-    try {
-      const token = localStorage.getItem('refresh_token');
-      if (!token) throw new Error('No refresh token');
-      
-      const response = await authService.refresh(token);
-      localStorage.setItem('access_token', response.access_token);
-      localStorage.setItem('refresh_token', response.refresh_token);
-      
-      const decoded = jwtDecode<{ sub: string }>(response.access_token);
-      setState({
-        user: { id: decoded.sub, email: '' },
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } catch {
-      logout();
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, refreshToken }}>
-      {children}
-    </AuthContext.Provider>
-  );
+// Theme Store
+interface ThemeState {
+  theme: 'light' | 'dark' | 'system';
+  setTheme: (theme: 'light' | 'dark' | 'system') => void;
 }
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
-```
+const useThemeStore = create<ThemeState>()(
+  persist(
+    (set) => ({
+      theme: 'system',
+      setTheme: (theme) => set({ theme }),
+    }),
+    { name: 'theme-storage' }
+  )
+);
 
-### Protected Route Component
-
-```typescript
-// components/ProtectedRoute.tsx
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-
+// Protected Route Props
 interface ProtectedRouteProps {
   children: React.ReactNode;
-}
-
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
-
-  if (isLoading) {
-    return <div>Loading...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return <>{children}</>;
+  requireAuth?: boolean;
 }
 ```
+
+### Component Specifications
+
+#### LoginForm
+- Email và password inputs với validation
+- Submit handler gọi useAuthStore().login
+- Hiển thị loading state và errors
+- Link đến register và forgot password
+
+#### RegisterForm
+- Email và password inputs với validation
+- Password confirmation field
+- Password strength indicator
+- Submit handler gọi useAuthStore().register
+
+#### MfaForm
+- 6-digit code input
+- Support backup code input
+- Auto-submit khi đủ 6 digits
+- Countdown timer cho resend
+
+#### ProfileCard
+- Hiển thị user info (email, created_at)
+- MFA status badge
+- Email verification status
+- Edit profile button
+
+#### SessionList
+- Table hiển thị sessions
+- Device/browser info
+- IP address và location
+- Revoke button cho mỗi session
+- "Revoke all other sessions" button
+
+#### MfaSetup
+- QR code display cho TOTP
+- Manual secret entry option
+- Verification code input
+- Backup codes display sau khi setup
+
+#### PasskeyList
+- List registered passkeys
+- Device name và last used
+- Rename và delete actions
+- Register new passkey button
 
 ## Data Models
 
-### Token Storage
-
-Tokens được lưu trong localStorage với keys:
-- `access_token`: JWT access token
-- `refresh_token`: JWT refresh token
-
-### React Query Cache Keys
+### Local Storage Schema
 
 ```typescript
-const queryKeys = {
-  apps: ['apps'] as const,
-  app: (id: string) => ['apps', id] as const,
-  roles: (appId: string) => ['apps', appId, 'roles'] as const,
-  permissions: (appId: string) => ['apps', appId, 'permissions'] as const,
-};
+// Token storage
+interface StoredTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+// Theme preference
+type Theme = 'light' | 'dark' | 'system';
 ```
+
+### Form Validation Schemas (Zod)
+
+```typescript
+// Login schema
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+// Register schema
+const registerSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain uppercase letter')
+    .regex(/[a-z]/, 'Password must contain lowercase letter')
+    .regex(/[0-9]/, 'Password must contain number'),
+  confirmPassword: z.string(),
+}).refine(data => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+// Change password schema
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string()
+    .min(8, 'Password must be at least 8 characters'),
+  confirmPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+```
+
+
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+*A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
+### Property 1: Form Validation Consistency
 
-### Property 1: API Error to UI Message Mapping
+*For any* form input that violates validation rules (empty required fields, invalid email format, weak password), the form SHALL display appropriate error messages and prevent submission.
 
-*For any* API error response with a known error code (invalid_email, weak_password, email_exists, invalid_credentials, user_inactive, app_code_exists, role_name_exists, permission_code_exists), the UI SHALL display the corresponding user-friendly error message.
+**Validates: Requirements 1.2, 1.3, 5.4**
 
-**Validates: Requirements 1.3, 1.4, 1.5, 2.5, 2.6, 5.5, 6.5, 7.5**
+### Property 2: Authentication State Persistence
 
-### Property 2: Token Storage Round-Trip
+*For any* successful login response containing tokens, the Auth_Frontend SHALL store tokens and update isAuthenticated state to true, and the user object SHALL be populated.
 
-*For any* successful login response containing access_token and refresh_token, storing them via Token_Manager and then retrieving them SHALL return the same token values.
+**Validates: Requirements 2.5**
 
-**Validates: Requirements 2.3, 3.4**
+### Property 3: Protected Route Access Control
 
-### Property 3: Logout Clears All Tokens
+*For any* protected route and unauthenticated state (no valid tokens), navigation to that route SHALL result in redirect to login page.
 
-*For any* authenticated state with stored tokens, calling logout SHALL result in both access_token and refresh_token being removed from storage.
+**Validates: Requirements 12.1**
 
-**Validates: Requirements 3.4**
+### Property 4: Session Data Display Completeness
 
-### Property 4: Protected Route Access Control
+*For any* session object returned from API, the rendered session item SHALL display device info, IP address, and last activity timestamp.
 
-*For any* protected route, if the user is not authenticated, the route SHALL redirect to login page. If the user is authenticated, the route SHALL render the protected content.
+**Validates: Requirements 6.4**
 
-**Validates: Requirements 9.1, 9.2**
+### Property 5: Audit Log Data Display Completeness
 
-### Property 5: API Request Token Attachment
+*For any* audit log entry returned from API, the rendered log item SHALL display action, IP address, user agent, and timestamp.
 
-*For any* API request to a protected endpoint, the API_Client SHALL attach the access_token in the Authorization header with "Bearer" prefix.
+**Validates: Requirements 11.2**
 
-**Validates: Requirements 3.5**
+### Property 6: Loading State Visibility
 
-### Property 6: Successful Creation Updates List
+*For any* async operation (API call), the UI SHALL display a loading indicator while the operation is in progress.
 
-*For any* successful creation operation (app, role, or permission), the corresponding list in the UI SHALL be updated to include the newly created item.
-
-**Validates: Requirements 5.4, 6.4, 7.4**
-
-### Property 7: Form Submission Triggers Correct API Call
-
-*For any* form submission (register, login, forgot-password, reset-password, create-app, create-role, create-permission, assign-role), the frontend SHALL send a request to the correct API endpoint with the form data.
-
-**Validates: Requirements 1.2, 2.2, 4.2, 4.5, 5.3, 6.3, 7.3, 8.3**
-
-### Property 8: Token Auto-Refresh Before Expiry
-
-*For any* access_token that is within 1 minute of expiration, the Token_Manager SHALL automatically trigger a refresh request before the token expires.
-
-**Validates: Requirements 3.2**
+**Validates: Requirements 13.3**
 
 ## Error Handling
 
-### API Error Handling Strategy
+### API Error Handling
 
 ```typescript
-// Error mapping for user-friendly messages
-const errorMessages: Record<string, string> = {
-  invalid_email: 'Invalid email format',
-  weak_password: 'Password does not meet requirements',
-  email_exists: 'Email already exists',
-  invalid_credentials: 'Invalid email or password',
-  user_inactive: 'Account is inactive',
-  app_code_exists: 'App code already exists',
-  role_name_exists: 'Role name already exists in this app',
-  permission_code_exists: 'Permission code already exists in this app',
-  app_not_found: 'App not found',
-  user_not_found: 'User not found',
-  role_not_found: 'Role not found',
-  invalid_token: 'Invalid or expired token',
-  token_expired: 'Session expired, please login again',
-};
+// Error types from SDK
+type ApiErrorType = 
+  | 'validation_error'
+  | 'authentication_error'
+  | 'authorization_error'
+  | 'not_found'
+  | 'conflict'
+  | 'rate_limit'
+  | 'server_error'
+  | 'network_error';
 
-function getErrorMessage(error: ApiError): string {
-  return errorMessages[error.error] || error.message || 'An unexpected error occurred';
-}
+// Error handling strategy
+const handleApiError = (error: AuthServerError): string => {
+  switch (error.error) {
+    case 'invalid_credentials':
+      return 'Email hoặc mật khẩu không đúng';
+    case 'email_exists':
+      return 'Email đã được đăng ký';
+    case 'invalid_token':
+      return 'Phiên đăng nhập đã hết hạn';
+    case 'mfa_required':
+      return 'Cần xác thực 2 yếu tố';
+    case 'invalid_mfa_code':
+      return 'Mã xác thực không đúng';
+    case 'rate_limit':
+      return 'Quá nhiều yêu cầu, vui lòng thử lại sau';
+    case 'network_error':
+      return 'Lỗi kết nối, vui lòng kiểm tra mạng';
+    default:
+      return 'Đã xảy ra lỗi, vui lòng thử lại';
+  }
+};
 ```
+
+### Form Validation Errors
+
+- Hiển thị inline errors dưới mỗi field
+- Highlight field có lỗi với border đỏ
+- Clear error khi user bắt đầu sửa
 
 ### Network Error Handling
 
-- Display "Network error. Please check your connection." for network failures
-- Implement retry logic with exponential backoff for transient failures
-- Show loading states during API calls
-
-### Token Refresh Error Handling
-
-- If refresh fails with 401, clear tokens and redirect to login
-- If refresh fails with network error, retry up to 3 times
-- Show session expired notification before redirect
+- Retry button cho network errors
+- Toast notification cho transient errors
+- Redirect to login cho authentication errors
 
 ## Testing Strategy
 
-### Testing Framework
-
-- **Unit Testing**: Vitest
-- **Component Testing**: React Testing Library
-- **Property-Based Testing**: fast-check
-- **E2E Testing**: Playwright (optional)
-
 ### Unit Tests
 
-Unit tests sẽ cover:
-- Individual component rendering
+Unit tests sẽ sử dụng Vitest và React Testing Library để test:
+
+- Component rendering
 - Form validation logic
-- Error message mapping
-- Token storage utilities
-- API service functions
+- Hook behavior
+- Utility functions
 
 ### Property-Based Tests
 
-Property tests sẽ verify các correctness properties đã định nghĩa:
+Property-based tests sẽ sử dụng fast-check để verify:
 
-1. **Error Message Mapping Property Test**
-   - Generate random error codes from known set
-   - Verify correct message is returned
+- Form validation consistency across inputs
+- Auth state transitions
+- Route protection logic
 
-2. **Token Storage Round-Trip Property Test**
-   - Generate random valid JWT-like strings
-   - Store and retrieve, verify equality
+### Integration Tests
 
-3. **Protected Route Property Test**
-   - Generate random auth states (authenticated/unauthenticated)
-   - Verify correct behavior for each state
+Integration tests sẽ mock SDK và test:
 
-4. **API Request Token Attachment Property Test**
-   - Generate random tokens
-   - Verify all requests include correct Authorization header
+- Login/register flows
+- MFA verification flow
+- Session management
+- Profile updates
 
 ### Test Configuration
 
 ```typescript
 // vitest.config.ts
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-
 export default defineConfig({
-  plugins: [react()],
   test: {
     environment: 'jsdom',
-    globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    globals: true,
   },
 });
 ```
 
-### Property Test Example
+### Property Test Annotations
 
+Mỗi property test sẽ được annotate với format:
 ```typescript
-// Feature: auth-frontend, Property 1: API Error to UI Message Mapping
-import { fc } from 'fast-check';
-import { getErrorMessage } from '../lib/errors';
-
-const knownErrorCodes = [
-  'invalid_email',
-  'weak_password', 
-  'email_exists',
-  'invalid_credentials',
-  'user_inactive',
-  'app_code_exists',
-  'role_name_exists',
-  'permission_code_exists',
-];
-
-describe('Error Message Mapping', () => {
-  it('should return user-friendly message for all known error codes', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom(...knownErrorCodes),
-        (errorCode) => {
-          const error = { error: errorCode, message: '', status_code: 400 };
-          const message = getErrorMessage(error);
-          return message !== '' && message !== errorCode;
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-});
+// Feature: auth-frontend, Property 1: Form Validation Consistency
+// Validates: Requirements 1.2, 1.3, 5.4
 ```

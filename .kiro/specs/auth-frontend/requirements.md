@@ -2,32 +2,31 @@
 
 ## Introduction
 
-Frontend application được xây dựng bằng Vite + React + TypeScript để tương tác với Auth Server API. Ứng dụng cung cấp giao diện người dùng cho việc đăng ký, đăng nhập, quản lý token, và quản lý apps/roles/permissions.
+Auth Frontend là một ứng dụng web React sử dụng Vite và shadcn/ui để cung cấp giao diện người dùng cho hệ thống xác thực. Ứng dụng sẽ tích hợp với SDK TypeScript có sẵn để giao tiếp với Auth Server API.
 
 ## Glossary
 
-- **Auth_Frontend**: Ứng dụng React frontend cho Auth Server
-- **User**: Người dùng cuối tương tác với hệ thống
-- **Auth_Service**: Module xử lý authentication (login, register, token refresh)
-- **API_Client**: Module gọi API đến backend Auth Server
-- **Token_Manager**: Module quản lý JWT tokens (lưu trữ, refresh tự động)
-- **Protected_Route**: Route yêu cầu user đã đăng nhập
-- **Dashboard**: Trang chính sau khi đăng nhập
+- **Auth_Frontend**: Ứng dụng React frontend cho hệ thống xác thực
+- **Auth_SDK**: SDK TypeScript client để giao tiếp với Auth Server
+- **User**: Người dùng cuối sử dụng hệ thống
+- **Admin**: Người quản trị hệ thống với quyền cao nhất
+- **MFA**: Multi-Factor Authentication - Xác thực đa yếu tố
+- **TOTP**: Time-based One-Time Password
+- **Passkey**: WebAuthn credential cho xác thực không mật khẩu
+- **Session**: Phiên đăng nhập của người dùng
 
 ## Requirements
 
 ### Requirement 1: User Registration
 
-**User Story:** As a user, I want to register a new account, so that I can access the system.
+**User Story:** As a user, I want to register a new account, so that I can access the authentication system.
 
 #### Acceptance Criteria
 
-1. WHEN a user navigates to the registration page, THE Auth_Frontend SHALL display a registration form with email and password fields
-2. WHEN a user submits valid registration data, THE Auth_Frontend SHALL send a POST request to /auth/register and display success message
-3. WHEN the backend returns email validation error, THE Auth_Frontend SHALL display "Invalid email format" error message
-4. WHEN the backend returns weak password error, THE Auth_Frontend SHALL display "Password does not meet requirements" error message
-5. WHEN the backend returns email exists error, THE Auth_Frontend SHALL display "Email already exists" error message
-6. WHEN registration is successful, THE Auth_Frontend SHALL redirect user to login page
+1. WHEN a user visits the registration page, THE Auth_Frontend SHALL display a registration form with email and password fields
+2. WHEN a user submits valid registration data, THE Auth_Frontend SHALL call the SDK register method and display success message
+3. WHEN a user submits invalid data, THE Auth_Frontend SHALL display appropriate validation errors
+4. IF registration fails due to existing email, THEN THE Auth_Frontend SHALL display an error message indicating the email is already registered
 
 ### Requirement 2: User Login
 
@@ -35,103 +34,126 @@ Frontend application được xây dựng bằng Vite + React + TypeScript để
 
 #### Acceptance Criteria
 
-1. WHEN a user navigates to the login page, THE Auth_Frontend SHALL display a login form with email and password fields
-2. WHEN a user submits valid credentials, THE Auth_Frontend SHALL send a POST request to /auth/login
-3. WHEN login is successful, THE Token_Manager SHALL store access_token and refresh_token in localStorage
-4. WHEN login is successful, THE Auth_Frontend SHALL redirect user to dashboard
-5. WHEN the backend returns invalid credentials error, THE Auth_Frontend SHALL display "Invalid email or password" error message
-6. WHEN the backend returns user inactive error, THE Auth_Frontend SHALL display "Account is inactive" error message
+1. WHEN a user visits the login page, THE Auth_Frontend SHALL display a login form with email and password fields
+2. WHEN a user submits valid credentials, THE Auth_Frontend SHALL authenticate via SDK and redirect to dashboard
+3. WHEN MFA is required, THE Auth_Frontend SHALL redirect to MFA verification page
+4. IF login fails, THEN THE Auth_Frontend SHALL display appropriate error message
+5. WHEN login succeeds, THE Auth_Frontend SHALL store tokens securely and update authentication state
 
-### Requirement 3: Token Management
+### Requirement 3: MFA Verification
 
-**User Story:** As a user, I want my session to be maintained automatically, so that I don't have to login repeatedly.
-
-#### Acceptance Criteria
-
-1. THE Token_Manager SHALL store tokens securely in localStorage
-2. WHEN access_token is about to expire (within 1 minute), THE Token_Manager SHALL automatically refresh the token using /auth/refresh
-3. WHEN refresh token fails, THE Auth_Frontend SHALL redirect user to login page
-4. WHEN user logs out, THE Token_Manager SHALL clear all stored tokens
-5. THE API_Client SHALL automatically attach access_token to all protected API requests
-
-### Requirement 4: Password Reset
-
-**User Story:** As a user, I want to reset my password if I forget it, so that I can regain access to my account.
+**User Story:** As a user with MFA enabled, I want to complete MFA verification, so that I can securely access my account.
 
 #### Acceptance Criteria
 
-1. WHEN a user clicks "Forgot Password" on login page, THE Auth_Frontend SHALL navigate to forgot password page
-2. WHEN a user submits email for password reset, THE Auth_Frontend SHALL send POST request to /auth/forgot-password
-3. THE Auth_Frontend SHALL display "If the email exists, a password reset link has been sent" message
-4. WHEN a user navigates to reset password page with token, THE Auth_Frontend SHALL display new password form
-5. WHEN a user submits new password, THE Auth_Frontend SHALL send POST request to /auth/reset-password
-6. WHEN password reset is successful, THE Auth_Frontend SHALL redirect to login page with success message
+1. WHEN MFA is required during login, THE Auth_Frontend SHALL display MFA verification form
+2. WHEN a user enters valid TOTP code, THE Auth_Frontend SHALL complete authentication and redirect to dashboard
+3. IF MFA verification fails, THEN THE Auth_Frontend SHALL display error and allow retry
+4. THE Auth_Frontend SHALL support backup code verification as alternative
 
-### Requirement 5: App Management
+### Requirement 4: Password Recovery
 
-**User Story:** As an authenticated user, I want to create and view apps, so that I can manage my applications.
+**User Story:** As a user, I want to recover my password, so that I can regain access to my account.
 
 #### Acceptance Criteria
 
-1. WHEN an authenticated user navigates to apps page, THE Auth_Frontend SHALL display list of apps
-2. WHEN a user clicks "Create App", THE Auth_Frontend SHALL display a form with code and name fields
-3. WHEN a user submits valid app data, THE Auth_Frontend SHALL send POST request to /apps
-4. WHEN app creation is successful, THE Auth_Frontend SHALL add the new app to the list
-5. WHEN the backend returns app code exists error, THE Auth_Frontend SHALL display "App code already exists" error message
+1. WHEN a user clicks forgot password, THE Auth_Frontend SHALL display forgot password form
+2. WHEN a user submits email, THE Auth_Frontend SHALL call SDK forgotPassword and display confirmation
+3. WHEN a user visits reset password link, THE Auth_Frontend SHALL display reset password form
+4. WHEN a user submits new password, THE Auth_Frontend SHALL call SDK resetPassword and redirect to login
 
-### Requirement 6: Role Management
+### Requirement 5: User Profile Management
 
-**User Story:** As an authenticated user, I want to create roles for my apps, so that I can define access levels.
-
-#### Acceptance Criteria
-
-1. WHEN a user selects an app, THE Auth_Frontend SHALL display roles for that app
-2. WHEN a user clicks "Create Role", THE Auth_Frontend SHALL display a form with role name field
-3. WHEN a user submits valid role data, THE Auth_Frontend SHALL send POST request to /apps/{app_id}/roles
-4. WHEN role creation is successful, THE Auth_Frontend SHALL add the new role to the list
-5. WHEN the backend returns role name exists error, THE Auth_Frontend SHALL display "Role name already exists" error message
-
-### Requirement 7: Permission Management
-
-**User Story:** As an authenticated user, I want to create permissions for my apps, so that I can define granular access control.
+**User Story:** As a logged-in user, I want to view and update my profile, so that I can manage my account information.
 
 #### Acceptance Criteria
 
-1. WHEN a user selects an app, THE Auth_Frontend SHALL display permissions for that app
-2. WHEN a user clicks "Create Permission", THE Auth_Frontend SHALL display a form with permission code field
-3. WHEN a user submits valid permission data, THE Auth_Frontend SHALL send POST request to /apps/{app_id}/permissions
-4. WHEN permission creation is successful, THE Auth_Frontend SHALL add the new permission to the list
-5. WHEN the backend returns permission code exists error, THE Auth_Frontend SHALL display "Permission code already exists" error message
+1. WHEN a user visits profile page, THE Auth_Frontend SHALL display current profile information
+2. WHEN a user updates profile, THE Auth_Frontend SHALL call SDK updateProfile and display success
+3. WHEN a user changes password, THE Auth_Frontend SHALL call SDK changePassword and display confirmation
+4. THE Auth_Frontend SHALL validate password requirements before submission
 
-### Requirement 8: User Role Assignment
+### Requirement 6: Session Management
 
-**User Story:** As an authenticated user, I want to assign roles to users, so that I can control their access.
-
-#### Acceptance Criteria
-
-1. WHEN a user navigates to user management for an app, THE Auth_Frontend SHALL display user list
-2. WHEN a user clicks "Assign Role", THE Auth_Frontend SHALL display role selection dropdown
-3. WHEN a user selects a role and confirms, THE Auth_Frontend SHALL send POST request to /apps/{app_id}/users/{user_id}/roles
-4. WHEN role assignment is successful, THE Auth_Frontend SHALL update the user's role display
-
-### Requirement 9: Protected Routes
-
-**User Story:** As a system, I want to protect certain routes, so that only authenticated users can access them.
+**User Story:** As a user, I want to manage my active sessions, so that I can control access to my account.
 
 #### Acceptance Criteria
 
-1. WHEN an unauthenticated user tries to access a protected route, THE Auth_Frontend SHALL redirect to login page
-2. WHEN an authenticated user accesses a protected route, THE Auth_Frontend SHALL render the protected content
-3. THE Auth_Frontend SHALL check token validity on each protected route access
+1. WHEN a user visits sessions page, THE Auth_Frontend SHALL display list of active sessions
+2. WHEN a user revokes a session, THE Auth_Frontend SHALL call SDK revokeSession and update list
+3. WHEN a user clicks logout all, THE Auth_Frontend SHALL revoke all other sessions
+4. THE Auth_Frontend SHALL display session details including device, IP, and last activity
 
-### Requirement 10: UI/UX
+### Requirement 7: MFA Setup
 
-**User Story:** As a user, I want a clean and responsive interface, so that I can use the application comfortably.
+**User Story:** As a user, I want to setup MFA, so that I can secure my account with additional authentication.
 
 #### Acceptance Criteria
 
-1. THE Auth_Frontend SHALL use a modern UI component library (e.g., Tailwind CSS, shadcn/ui)
+1. WHEN a user initiates TOTP setup, THE Auth_Frontend SHALL display QR code and secret
+2. WHEN a user verifies TOTP code, THE Auth_Frontend SHALL enable MFA and display backup codes
+3. WHEN a user disables MFA, THE Auth_Frontend SHALL confirm and call SDK disableMfa
+4. THE Auth_Frontend SHALL allow regeneration of backup codes
+
+### Requirement 8: Passkey Management
+
+**User Story:** As a user, I want to manage passkeys, so that I can use passwordless authentication.
+
+#### Acceptance Criteria
+
+1. WHEN a user registers a passkey, THE Auth_Frontend SHALL use WebAuthn API and SDK
+2. WHEN a user lists passkeys, THE Auth_Frontend SHALL display all registered passkeys
+3. WHEN a user deletes a passkey, THE Auth_Frontend SHALL call SDK deletePasskey
+4. WHEN a user renames a passkey, THE Auth_Frontend SHALL call SDK renamePasskey
+
+### Requirement 9: Passkey Authentication
+
+**User Story:** As a user with passkeys, I want to login using passkey, so that I can authenticate without password.
+
+#### Acceptance Criteria
+
+1. WHEN a user chooses passkey login, THE Auth_Frontend SHALL initiate WebAuthn authentication
+2. WHEN passkey authentication succeeds, THE Auth_Frontend SHALL complete login and redirect
+3. IF passkey authentication fails, THEN THE Auth_Frontend SHALL display error and offer alternatives
+
+### Requirement 10: Dashboard
+
+**User Story:** As a logged-in user, I want to see a dashboard, so that I can access all features easily.
+
+#### Acceptance Criteria
+
+1. WHEN a user logs in, THE Auth_Frontend SHALL display dashboard with navigation
+2. THE Auth_Frontend SHALL show user profile summary on dashboard
+3. THE Auth_Frontend SHALL provide quick access to security settings
+4. THE Auth_Frontend SHALL display recent activity from audit logs
+
+### Requirement 11: Audit Logs
+
+**User Story:** As a user, I want to view my audit logs, so that I can monitor account activity.
+
+#### Acceptance Criteria
+
+1. WHEN a user visits audit logs page, THE Auth_Frontend SHALL display paginated audit logs
+2. THE Auth_Frontend SHALL show action, IP address, user agent, and timestamp for each log
+3. WHEN a user navigates pages, THE Auth_Frontend SHALL load corresponding audit logs
+
+### Requirement 12: Protected Routes
+
+**User Story:** As a system, I want to protect routes, so that only authenticated users can access them.
+
+#### Acceptance Criteria
+
+1. WHEN an unauthenticated user accesses protected route, THE Auth_Frontend SHALL redirect to login
+2. WHEN a token expires, THE Auth_Frontend SHALL attempt refresh before redirecting
+3. THE Auth_Frontend SHALL maintain authentication state across page refreshes
+
+### Requirement 13: UI/UX Design
+
+**User Story:** As a user, I want a modern and responsive UI, so that I can use the application comfortably.
+
+#### Acceptance Criteria
+
+1. THE Auth_Frontend SHALL use shadcn/ui components for consistent design
 2. THE Auth_Frontend SHALL be responsive and work on mobile devices
-3. THE Auth_Frontend SHALL display loading states during API calls
-4. THE Auth_Frontend SHALL display toast notifications for success/error messages
-5. THE Auth_Frontend SHALL have a consistent navigation layout
+3. THE Auth_Frontend SHALL provide loading states and feedback for all actions
+4. THE Auth_Frontend SHALL support dark mode toggle
