@@ -1,0 +1,39 @@
+# Build artifacts
+target/
+docker/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Keys (should be mounted at runtime)
+keys/
+
+# SDK
+sdk/
+
+# Tests
+tests/
+proptest-regressions/
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Misc
+*.log
+*.tmp

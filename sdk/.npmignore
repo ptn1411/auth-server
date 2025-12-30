@@ -1,3 +1,23 @@
+# Source files
 src/
+
+# Tests
+__tests__/
+*.test.ts
+jest.config.js
+coverage/
+
+# TypeScript config
 tsconfig.json
+
+# Development
 .gitignore
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
