@@ -46,9 +46,9 @@ impl RateLimitRepository {
             .await?;
 
         // Get current count
-        let count: Option<(i32,)> = sqlx::query_as(
+        let count: Option<(i64,)> = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(request_count), 0) as count
+            SELECT CAST(COALESCE(SUM(request_count), 0) AS SIGNED) as count
             FROM rate_limits 
             WHERE identifier = ? AND endpoint = ? AND window_start >= ?
             "#,
@@ -59,7 +59,7 @@ impl RateLimitRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        let current_count = count.map(|c| c.0).unwrap_or(0);
+        let current_count = count.map(|c| c.0 as i32).unwrap_or(0);
         let remaining = config.max_requests - current_count - 1;
         let reset_at = (Utc::now() + Duration::seconds(config.window_seconds)).timestamp();
 
@@ -67,18 +67,23 @@ impl RateLimitRepository {
             return Ok((false, 0, reset_at));
         }
 
-        // Increment counter
+        // Increment counter - use a fixed window start time (truncated to the second)
+        let now = Utc::now();
+        let window_key = now.format("%Y-%m-%d %H:%M:%S").to_string();
         let id = Uuid::new_v4();
+        
+        // Try to insert or update existing record for this window
         sqlx::query(
             r#"
             INSERT INTO rate_limits (id, identifier, endpoint, request_count, window_start)
-            VALUES (?, ?, ?, 1, NOW())
+            VALUES (?, ?, ?, 1, ?)
             ON DUPLICATE KEY UPDATE request_count = request_count + 1
             "#,
         )
-        .bind(id)
+        .bind(id.to_string())
         .bind(identifier)
         .bind(endpoint)
+        .bind(&window_key)
         .execute(&self.pool)
         .await?;
 
@@ -94,9 +99,9 @@ impl RateLimitRepository {
     ) -> Result<(i32, i32, i64), AppError> {
         let window_start = Utc::now() - Duration::seconds(config.window_seconds);
 
-        let count: Option<(i32,)> = sqlx::query_as(
+        let count: Option<(i64,)> = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(request_count), 0) as count
+            SELECT CAST(COALESCE(SUM(request_count), 0) AS SIGNED) as count
             FROM rate_limits 
             WHERE identifier = ? AND endpoint = ? AND window_start >= ?
             "#,
@@ -107,7 +112,7 @@ impl RateLimitRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        let current_count = count.map(|c| c.0).unwrap_or(0);
+        let current_count = count.map(|c| c.0 as i32).unwrap_or(0);
         let remaining = (config.max_requests - current_count).max(0);
         let reset_at = (Utc::now() + Duration::seconds(config.window_seconds)).timestamp();
 

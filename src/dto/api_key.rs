@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 #[derive(Debug, Deserialize)]
 pub struct CreateApiKeyRequest {
     pub name: String,
+    #[serde(default)]
     pub scopes: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
 }

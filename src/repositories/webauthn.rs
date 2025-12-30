@@ -35,8 +35,8 @@ impl WebAuthnRepository {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
-        .bind(id)
-        .bind(user_id)
+        .bind(id.to_string())
+        .bind(user_id.to_string())
         .bind(credential_id)
         .bind(public_key)
         .bind(counter)
@@ -55,7 +55,7 @@ impl WebAuthnRepository {
         let cred = sqlx::query_as::<_, WebAuthnCredential>(
             "SELECT * FROM webauthn_credentials WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -77,7 +77,7 @@ impl WebAuthnRepository {
         let creds = sqlx::query_as::<_, WebAuthnCredential>(
             "SELECT * FROM webauthn_credentials WHERE user_id = ? AND is_active = TRUE ORDER BY created_at DESC",
         )
-        .bind(user_id)
+        .bind(user_id.to_string())
         .fetch_all(&self.pool)
         .await?;
 
@@ -87,7 +87,7 @@ impl WebAuthnRepository {
     pub async fn update_counter(&self, id: Uuid, counter: u32) -> Result<(), AppError> {
         sqlx::query("UPDATE webauthn_credentials SET counter = ?, last_used_at = NOW() WHERE id = ?")
             .bind(counter)
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -96,7 +96,7 @@ impl WebAuthnRepository {
     pub async fn update_device_name(&self, id: Uuid, name: &str) -> Result<(), AppError> {
         sqlx::query("UPDATE webauthn_credentials SET device_name = ? WHERE id = ?")
             .bind(name)
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -104,7 +104,7 @@ impl WebAuthnRepository {
 
     pub async fn deactivate_credential(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("UPDATE webauthn_credentials SET is_active = FALSE WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -112,7 +112,7 @@ impl WebAuthnRepository {
 
     pub async fn delete_credential(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("DELETE FROM webauthn_credentials WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -139,8 +139,8 @@ impl WebAuthnRepository {
             VALUES (?, ?, ?, ?, ?)
             "#,
         )
-        .bind(id)
-        .bind(user_id)
+        .bind(id.to_string())
+        .bind(user_id.map(|u| u.to_string()))
         .bind(challenge)
         .bind(type_str)
         .bind(expires_at)
@@ -156,7 +156,7 @@ impl WebAuthnRepository {
         let challenge = sqlx::query_as::<_, WebAuthnChallenge>(
             "SELECT * FROM webauthn_challenges WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -176,7 +176,7 @@ impl WebAuthnRepository {
 
     pub async fn delete_challenge(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("DELETE FROM webauthn_challenges WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -193,7 +193,7 @@ impl WebAuthnRepository {
         let count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = ? AND is_active = TRUE",
         )
-        .bind(user_id)
+        .bind(user_id.to_string())
         .fetch_one(&self.pool)
         .await?;
 

@@ -191,7 +191,10 @@ impl IntoResponse for AppError {
             AppError::NotAppOwner => (StatusCode::FORBIDDEN, "not_app_owner"),
             AppError::ValidationError(_) => (StatusCode::BAD_REQUEST, "validation_error"),
             AppError::Auth(_) => (StatusCode::FORBIDDEN, "auth_error"),
-            AppError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "database_error"),
+            AppError::Database(ref e) => {
+                tracing::error!("Database error: {:?}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "database_error")
+            }
             AppError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         };
 

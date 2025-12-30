@@ -14,13 +14,13 @@ pub struct CreateIpRuleRequest {
 #[derive(Debug, Serialize)]
 pub struct IpRuleResponse {
     pub id: Uuid,
-    pub app_id: Option<Uuid>,
+    pub app_id: Option<String>,
     pub ip_address: String,
     pub ip_range: Option<String>,
     pub rule_type: String,
     pub reason: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
-    pub created_by: Option<Uuid>,
+    pub created_by: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 

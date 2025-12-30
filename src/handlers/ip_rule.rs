@@ -57,14 +57,11 @@ pub async fn create_ip_rule_handler(
     Ok((
         StatusCode::CREATED,
         Json(IpRuleResponse {
-            id: rule.id,
+            id: rule.id_uuid(),
             app_id: rule.app_id,
             ip_address: rule.ip_address,
             ip_range: rule.ip_range,
-            rule_type: match rule.rule_type {
-                IpRuleType::Whitelist => "whitelist".to_string(),
-                IpRuleType::Blacklist => "blacklist".to_string(),
-            },
+            rule_type: rule.rule_type,
             reason: rule.reason,
             expires_at: rule.expires_at,
             created_by: rule.created_by,
@@ -102,14 +99,11 @@ pub async fn create_app_ip_rule_handler(
     Ok((
         StatusCode::CREATED,
         Json(IpRuleResponse {
-            id: rule.id,
+            id: rule.id_uuid(),
             app_id: rule.app_id,
             ip_address: rule.ip_address,
             ip_range: rule.ip_range,
-            rule_type: match rule.rule_type {
-                IpRuleType::Whitelist => "whitelist".to_string(),
-                IpRuleType::Blacklist => "blacklist".to_string(),
-            },
+            rule_type: rule.rule_type,
             reason: rule.reason,
             expires_at: rule.expires_at,
             created_by: rule.created_by,
@@ -140,14 +134,11 @@ pub async fn list_ip_rules_handler(
     let response: Vec<IpRuleResponse> = rules
         .into_iter()
         .map(|r| IpRuleResponse {
-            id: r.id,
+            id: r.id_uuid(),
             app_id: r.app_id,
             ip_address: r.ip_address,
             ip_range: r.ip_range,
-            rule_type: match r.rule_type {
-                IpRuleType::Whitelist => "whitelist".to_string(),
-                IpRuleType::Blacklist => "blacklist".to_string(),
-            },
+            rule_type: r.rule_type,
             reason: r.reason,
             expires_at: r.expires_at,
             created_by: r.created_by,
@@ -170,14 +161,11 @@ pub async fn list_app_ip_rules_handler(
     let response: Vec<IpRuleResponse> = rules
         .into_iter()
         .map(|r| IpRuleResponse {
-            id: r.id,
+            id: r.id_uuid(),
             app_id: r.app_id,
             ip_address: r.ip_address,
             ip_range: r.ip_range,
-            rule_type: match r.rule_type {
-                IpRuleType::Whitelist => "whitelist".to_string(),
-                IpRuleType::Blacklist => "blacklist".to_string(),
-            },
+            rule_type: r.rule_type,
             reason: r.reason,
             expires_at: r.expires_at,
             created_by: r.created_by,

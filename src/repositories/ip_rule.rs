@@ -36,14 +36,14 @@ impl IpRuleRepository {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
-        .bind(id)
-        .bind(app_id)
+        .bind(id.to_string())
+        .bind(app_id.map(|u| u.to_string()))
         .bind(ip_address)
         .bind(ip_range)
         .bind(rule_type_str)
         .bind(reason)
         .bind(expires_at)
-        .bind(created_by)
+        .bind(created_by.map(|u| u.to_string()))
         .execute(&self.pool)
         .await?;
 
@@ -56,7 +56,7 @@ impl IpRuleRepository {
         let rule = sqlx::query_as::<_, IpRule>(
             "SELECT * FROM ip_rules WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -73,7 +73,7 @@ impl IpRuleRepository {
             "#,
         )
         .bind(ip)
-        .bind(app_id)
+        .bind(app_id.map(|u| u.to_string()))
         .fetch_all(&self.pool)
         .await?;
 
@@ -83,9 +83,9 @@ impl IpRuleRepository {
     pub async fn find_by_app(&self, app_id: Option<Uuid>) -> Result<Vec<IpRule>, AppError> {
         let rules = if let Some(app_id) = app_id {
             sqlx::query_as::<_, IpRule>(
-                "SELECT * FROM ip_rules WHERE app_id = ? OR app_id IS NULL ORDER BY created_at DESC",
+                "SELECT * FROM ip_rules WHERE app_id = ? ORDER BY created_at DESC",
             )
-            .bind(app_id)
+            .bind(app_id.to_string())
             .fetch_all(&self.pool)
             .await?
         } else {
@@ -108,7 +108,7 @@ impl IpRuleRepository {
             }
 
             if rule.matches_ip(ip) {
-                return Ok(Some(rule.rule_type));
+                return Ok(Some(rule.rule_type_enum()));
             }
         }
 
@@ -131,7 +131,7 @@ impl IpRuleRepository {
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("DELETE FROM ip_rules WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())

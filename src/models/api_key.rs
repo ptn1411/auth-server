@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ApiKey {
+    #[sqlx(try_from = "String")]
     pub id: Uuid,
+    #[sqlx(try_from = "String")]
     pub app_id: Uuid,
     pub name: String,
     pub key_hash: String,

@@ -35,8 +35,8 @@ impl ApiKeyRepository {
             VALUES (?, ?, ?, ?, ?, ?, ?)
             "#,
         )
-        .bind(id)
-        .bind(app_id)
+        .bind(id.to_string())
+        .bind(app_id.to_string())
         .bind(name)
         .bind(&key_hash)
         .bind(key_prefix)
@@ -54,7 +54,7 @@ impl ApiKeyRepository {
         let key = sqlx::query_as::<_, ApiKey>(
             "SELECT * FROM api_keys WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -76,7 +76,7 @@ impl ApiKeyRepository {
         let keys = sqlx::query_as::<_, ApiKey>(
             "SELECT * FROM api_keys WHERE app_id = ? ORDER BY created_at DESC",
         )
-        .bind(app_id)
+        .bind(app_id.to_string())
         .fetch_all(&self.pool)
         .await?;
 
@@ -105,7 +105,7 @@ impl ApiKeyRepository {
 
     pub async fn update_last_used(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("UPDATE api_keys SET last_used_at = NOW() WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -121,7 +121,7 @@ impl ApiKeyRepository {
         if let Some(name) = name {
             sqlx::query("UPDATE api_keys SET name = ? WHERE id = ?")
                 .bind(name)
-                .bind(id)
+                .bind(id.to_string())
                 .execute(&self.pool)
                 .await?;
         }
@@ -131,7 +131,7 @@ impl ApiKeyRepository {
                 .map_err(|e| AppError::InternalError(e.into()))?;
             sqlx::query("UPDATE api_keys SET scopes = ? WHERE id = ?")
                 .bind(scopes_json)
-                .bind(id)
+                .bind(id.to_string())
                 .execute(&self.pool)
                 .await?;
         }
@@ -139,7 +139,7 @@ impl ApiKeyRepository {
         if let Some(is_active) = is_active {
             sqlx::query("UPDATE api_keys SET is_active = ? WHERE id = ?")
                 .bind(is_active)
-                .bind(id)
+                .bind(id.to_string())
                 .execute(&self.pool)
                 .await?;
         }
@@ -149,7 +149,7 @@ impl ApiKeyRepository {
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("DELETE FROM api_keys WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -157,7 +157,7 @@ impl ApiKeyRepository {
 
     pub async fn revoke(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("UPDATE api_keys SET is_active = FALSE WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())

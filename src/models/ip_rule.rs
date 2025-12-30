@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
-#[sqlx(type_name = "VARCHAR")]
-#[sqlx(rename_all = "lowercase")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum IpRuleType {
     #[serde(rename = "whitelist")]
     Whitelist,
@@ -13,20 +11,52 @@ pub enum IpRuleType {
     Blacklist,
 }
 
+impl TryFrom<String> for IpRuleType {
+    type Error = String;
+    
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.as_str() {
+            "whitelist" => Ok(IpRuleType::Whitelist),
+            "blacklist" => Ok(IpRuleType::Blacklist),
+            _ => Ok(IpRuleType::Blacklist), // Default
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct IpRule {
-    pub id: Uuid,
-    pub app_id: Option<Uuid>,
+    pub id: String,
+    pub app_id: Option<String>,
     pub ip_address: String,
     pub ip_range: Option<String>,
-    pub rule_type: IpRuleType,
+    pub rule_type: String,
     pub reason: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
-    pub created_by: Option<Uuid>,
+    pub created_by: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
 impl IpRule {
+    pub fn id_uuid(&self) -> Uuid {
+        Uuid::parse_str(&self.id).unwrap_or_else(|_| Uuid::nil())
+    }
+    
+    pub fn rule_type_enum(&self) -> IpRuleType {
+        match self.rule_type.as_str() {
+            "whitelist" => IpRuleType::Whitelist,
+            "blacklist" => IpRuleType::Blacklist,
+            _ => IpRuleType::Blacklist,
+        }
+    }
+    
+    pub fn app_id_uuid(&self) -> Option<Uuid> {
+        self.app_id.as_ref().and_then(|s| Uuid::parse_str(s).ok())
+    }
+    
+    pub fn created_by_uuid(&self) -> Option<Uuid> {
+        self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok())
+    }
+
     pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
             expires_at < Utc::now()

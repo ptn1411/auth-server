@@ -3,9 +3,15 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+fn parse_uuid(s: &str) -> Uuid {
+    Uuid::parse_str(s).unwrap_or_default()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Webhook {
+    #[sqlx(try_from = "String")]
     pub id: Uuid,
+    #[sqlx(try_from = "String")]
     pub app_id: Uuid,
     pub url: String,
     pub secret: String,
@@ -17,7 +23,9 @@ pub struct Webhook {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WebhookDelivery {
+    #[sqlx(try_from = "String")]
     pub id: Uuid,
+    #[sqlx(try_from = "String")]
     pub webhook_id: Uuid,
     pub event_type: String,
     pub payload: sqlx::types::Json<serde_json::Value>,

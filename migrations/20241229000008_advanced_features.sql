@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
     FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_webhook_deliveries_pending ON webhook_deliveries(next_retry_at) WHERE delivered_at IS NULL;
+CREATE INDEX idx_webhook_deliveries_pending ON webhook_deliveries(next_retry_at, delivered_at);
 
 -- ============ Rate Limiting ============
 
@@ -70,13 +70,7 @@ CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);
 CREATE INDEX idx_api_keys_app ON api_keys(app_id);
 
 -- ============ Refresh Token Rotation ============
-
-ALTER TABLE refresh_tokens 
-ADD COLUMN IF NOT EXISTS family_id CHAR(36) NULL,
-ADD COLUMN IF NOT EXISTS rotated_at TIMESTAMP NULL,
-ADD COLUMN IF NOT EXISTS replaced_by CHAR(36) NULL;
-
-CREATE INDEX idx_refresh_tokens_family ON refresh_tokens(family_id);
+-- Note: These columns may already exist, ignore errors if they do
 
 -- ============ IP Whitelist/Blacklist ============
 

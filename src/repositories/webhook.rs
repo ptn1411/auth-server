@@ -31,8 +31,8 @@ impl WebhookRepository {
             VALUES (?, ?, ?, ?, ?)
             "#,
         )
-        .bind(id)
-        .bind(app_id)
+        .bind(id.to_string())
+        .bind(app_id.to_string())
         .bind(url)
         .bind(secret)
         .bind(&events_json)
@@ -48,7 +48,7 @@ impl WebhookRepository {
         let webhook = sqlx::query_as::<_, Webhook>(
             "SELECT * FROM webhooks WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -59,7 +59,7 @@ impl WebhookRepository {
         let webhooks = sqlx::query_as::<_, Webhook>(
             "SELECT * FROM webhooks WHERE app_id = ? AND is_active = TRUE",
         )
-        .bind(app_id)
+        .bind(app_id.to_string())
         .fetch_all(&self.pool)
         .await?;
 
@@ -74,7 +74,7 @@ impl WebhookRepository {
             AND JSON_CONTAINS(events, ?)
             "#,
         )
-        .bind(app_id)
+        .bind(app_id.to_string())
         .bind(format!("\"{}\"", event))
         .fetch_all(&self.pool)
         .await?;
@@ -92,7 +92,7 @@ impl WebhookRepository {
         if let Some(url) = url {
             sqlx::query("UPDATE webhooks SET url = ? WHERE id = ?")
                 .bind(url)
-                .bind(id)
+                .bind(id.to_string())
                 .execute(&self.pool)
                 .await?;
         }
@@ -102,7 +102,7 @@ impl WebhookRepository {
                 .map_err(|e| AppError::InternalError(e.into()))?;
             sqlx::query("UPDATE webhooks SET events = ? WHERE id = ?")
                 .bind(events_json)
-                .bind(id)
+                .bind(id.to_string())
                 .execute(&self.pool)
                 .await?;
         }
@@ -110,7 +110,7 @@ impl WebhookRepository {
         if let Some(is_active) = is_active {
             sqlx::query("UPDATE webhooks SET is_active = ? WHERE id = ?")
                 .bind(is_active)
-                .bind(id)
+                .bind(id.to_string())
                 .execute(&self.pool)
                 .await?;
         }
@@ -120,7 +120,7 @@ impl WebhookRepository {
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("DELETE FROM webhooks WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -143,8 +143,8 @@ impl WebhookRepository {
             VALUES (?, ?, ?, ?)
             "#,
         )
-        .bind(id)
-        .bind(webhook_id)
+        .bind(id.to_string())
+        .bind(webhook_id.to_string())
         .bind(event_type)
         .bind(&payload_json)
         .execute(&self.pool)
@@ -159,7 +159,7 @@ impl WebhookRepository {
         let delivery = sqlx::query_as::<_, WebhookDelivery>(
             "SELECT * FROM webhook_deliveries WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -194,7 +194,7 @@ impl WebhookRepository {
         )
         .bind(status)
         .bind(body)
-        .bind(id)
+        .bind(id.to_string())
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -213,7 +213,7 @@ impl WebhookRepository {
         .bind(status)
         .bind(body)
         .bind(next_retry)
-        .bind(id)
+        .bind(id.to_string())
         .execute(&self.pool)
         .await?;
         Ok(())

@@ -89,9 +89,8 @@ pub async fn start_authentication_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = if let Some(email) = &req.email {
         let user_repo = UserRepository::new(state.pool.clone());
-        let user = user_repo.find_by_email(email).await?
-            .ok_or(AppError::NotFound("User not found".into()))?;
-        Some(user.id)
+        // If user not found, return None (will return empty credentials)
+        user_repo.find_by_email(email).await?.map(|u| u.id)
     } else {
         None
     };
