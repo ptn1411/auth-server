@@ -35,6 +35,37 @@ pub enum AuthError {
     #[error("Token expired")]
     TokenExpired,
 
+    #[error("Insufficient scope")]
+    InsufficientScope,
+
+    #[error("Account is locked")]
+    AccountLocked {
+        locked_until: chrono::DateTime<chrono::Utc>,
+        remaining_seconds: i64,
+    },
+
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded {
+        retry_after_seconds: i64,
+        limit: i32,
+        remaining: i32,
+    },
+
+    #[error("MFA required")]
+    MfaRequired {
+        mfa_token: String,
+        available_methods: Vec<String>,
+    },
+
+    #[error("Invalid MFA code")]
+    InvalidMfaCode,
+
+    #[error("MFA not enabled")]
+    MfaNotEnabled,
+
+    #[error("Session not found")]
+    SessionNotFound,
+
     #[error("Internal server error")]
     InternalError(#[from] anyhow::Error),
 }
@@ -116,7 +147,17 @@ impl IntoResponse for AuthError {
             AuthError::WeakPassword => (StatusCode::BAD_REQUEST, "weak_password"),
             AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "invalid_token"),
             AuthError::TokenExpired => (StatusCode::UNAUTHORIZED, "token_expired"),
-            AuthError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
+            AuthError::InsufficientScope => (StatusCode::FORBIDDEN, "insufficient_scope"),
+            AuthError::AccountLocked { .. } => (StatusCode::FORBIDDEN, "account_locked"),
+            AuthError::RateLimitExceeded { .. } => (StatusCode::TOO_MANY_REQUESTS, "rate_limit_exceeded"),
+            AuthError::MfaRequired { .. } => (StatusCode::FORBIDDEN, "mfa_required"),
+            AuthError::InvalidMfaCode => (StatusCode::UNAUTHORIZED, "invalid_mfa_code"),
+            AuthError::MfaNotEnabled => (StatusCode::BAD_REQUEST, "mfa_not_enabled"),
+            AuthError::SessionNotFound => (StatusCode::NOT_FOUND, "session_not_found"),
+            AuthError::InternalError(ref e) => {
+                tracing::error!("Internal error: {:?}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
+            }
         };
 
         let body = Json(ErrorResponse {
@@ -278,6 +319,67 @@ impl IntoResponse for AppAuthError {
 
         let body = Json(ErrorResponse {
             error: error_type.to_string(),
+            message: self.to_string(),
+            status_code: status.as_u16(),
+        });
+
+        (status, body).into_response()
+    }
+}
+
+/// Error types for OAuth2 operations
+/// RFC 6749 compliant error codes
+#[allow(dead_code)]
+#[derive(Debug, thiserror::Error)]
+pub enum OAuthError {
+    /// Missing or invalid parameter (RFC 6749 Section 4.1.2.1)
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
+    /// Client authentication failed (RFC 6749 Section 5.2)
+    #[error("Invalid client")]
+    InvalidClient,
+
+    /// Invalid authorization code or refresh token (RFC 6749 Section 5.2)
+    #[error("Invalid grant: {0}")]
+    InvalidGrant(String),
+
+    /// Client not authorized for this grant type (RFC 6749 Section 5.2)
+    #[error("Unauthorized client")]
+    UnauthorizedClient,
+
+    /// Grant type not supported (RFC 6749 Section 5.2)
+    #[error("Unsupported grant type")]
+    UnsupportedGrantType,
+
+    /// Invalid or unknown scope (RFC 6749 Section 5.2)
+    #[error("Invalid scope: {0}")]
+    InvalidScope(String),
+
+    /// User denied consent (RFC 6749 Section 4.1.2.1)
+    #[error("Access denied")]
+    AccessDenied,
+
+    /// Internal server error
+    #[error("Server error: {0}")]
+    ServerError(String),
+}
+
+impl IntoResponse for OAuthError {
+    fn into_response(self) -> Response {
+        let (status, error_code) = match &self {
+            OAuthError::InvalidRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
+            OAuthError::InvalidClient => (StatusCode::UNAUTHORIZED, "invalid_client"),
+            OAuthError::InvalidGrant(_) => (StatusCode::BAD_REQUEST, "invalid_grant"),
+            OAuthError::UnauthorizedClient => (StatusCode::UNAUTHORIZED, "unauthorized_client"),
+            OAuthError::UnsupportedGrantType => (StatusCode::BAD_REQUEST, "unsupported_grant_type"),
+            OAuthError::InvalidScope(_) => (StatusCode::BAD_REQUEST, "invalid_scope"),
+            OAuthError::AccessDenied => (StatusCode::FORBIDDEN, "access_denied"),
+            OAuthError::ServerError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+        };
+
+        let body = Json(ErrorResponse {
+            error: error_code.to_string(),
             message: self.to_string(),
             status_code: status.as_u16(),
         });

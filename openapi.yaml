@@ -30,14 +30,68 @@ servers:
 tags:
   - name: Authentication
     description: User authentication operations (public endpoints)
+  - name: User Profile
+    description: User profile management operations (protected endpoints)
   - name: Apps
     description: App management operations (protected endpoints)
   - name: Roles
     description: Role management operations (protected endpoints)
   - name: Permissions
     description: Permission management operations (protected endpoints)
+  - name: Admin
+    description: Admin operations (system admin only)
+  - name: Security
+    description: Security features - MFA, sessions, audit logs, token revocation
+  - name: Health
+    description: Health check and readiness endpoints
 
 paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the service
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+  /ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Verifies the service is ready to accept requests (database connected)
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  version:
+                    type: string
+                    example: "0.1.0"
+        '503':
+          description: Service unavailable (database not connected)
+
   /auth/register:
     post:
       tags:
@@ -106,7 +160,17 @@ paths:
         - Authentication
       summary: Authenticate user
       description: |
-        Authenticate user with email and password, returns JWT access token and refresh token.
+        Authenticate user with email and password.
+        
+        ## Response Types
+        - **Without MFA**: Returns JWT access token and refresh token directly
+        - **With MFA**: Returns `mfa_required: true` with `mfa_token` - use `/auth/mfa/verify` to complete login
+        
+        ## Security Features
+        - **Rate Limiting**: 5 login attempts per minute per IP+email combination
+        - **Account Lockout**: After 5 failed attempts, account is locked for 15 minutes
+        - **Audit Logging**: All login attempts (success/failure) are logged
+        - **MFA Support**: If user has MFA enabled, requires 2-step verification
         
         Requirements: 14.2, 2.1-2.5
       operationId: loginUser
@@ -121,11 +185,27 @@ paths:
               password: "SecurePassword123!"
       responses:
         '200':
-          description: Successfully authenticated
+          description: Successfully authenticated or MFA required
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/TokenResponse'
+                  - $ref: '#/components/schemas/MfaRequiredResponse'
+              examples:
+                success:
+                  summary: Direct login success (no MFA)
+                  value:
+                    access_token: "eyJhbGciOiJSUzI1NiIs..."
+                    refresh_token: "eyJhbGciOiJSUzI1NiIs..."
+                    token_type: "Bearer"
+                    expires_in: 900
+                mfa_required:
+                  summary: MFA verification required
+                  value:
+                    mfa_required: true
+                    mfa_token: "550e8400-e29b-41d4-a716-446655440000"
+                    available_methods: ["totp"]
         '401':
           description: Invalid credentials
           content:
@@ -137,15 +217,120 @@ paths:
                 message: "Invalid credentials"
                 status_code: 401
         '403':
-          description: User is inactive
+          description: User is inactive or account is locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                user_inactive:
+                  summary: User is inactive
+                  value:
+                    error: "user_inactive"
+                    message: "User is inactive"
+                    status_code: 403
+                account_locked:
+                  summary: Account is locked due to failed attempts
+                  value:
+                    error: "account_locked"
+                    message: "Account is locked"
+                    status_code: 403
+                user_banned:
+                  summary: User is banned from the app
+                  value:
+                    error: "user_banned"
+                    message: "User is banned from this app"
+                    status_code: 403
+        '429':
+          description: Rate limit exceeded
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: "user_inactive"
-                message: "User is inactive"
-                status_code: 403
+                error: "rate_limit_exceeded"
+                message: "Rate limit exceeded"
+                status_code: 429
+          headers:
+            Retry-After:
+              description: Number of seconds to wait before retrying
+              schema:
+                type: integer
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa/verify:
+    post:
+      tags:
+        - Authentication
+      summary: Complete MFA login
+      description: |
+        Complete the login process by verifying MFA code.
+        Called after `/auth/login` returns `mfa_required: true`.
+        
+        ## Supported Methods
+        - **TOTP**: 6-digit code from authenticator app
+        - **Backup Code**: One-time use backup code
+        
+        ## Security Features
+        - **Rate Limiting**: 5 attempts per 5 minutes
+        - **Token Expiry**: MFA token expires in 5 minutes
+      operationId: completeMfaLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteMfaLoginRequest'
+            examples:
+              totp:
+                summary: TOTP code verification
+                value:
+                  mfa_token: "550e8400-e29b-41d4-a716-446655440000"
+                  code: "123456"
+                  is_backup_code: false
+              backup:
+                summary: Backup code verification
+                value:
+                  mfa_token: "550e8400-e29b-41d4-a716-446655440000"
+                  code: "ABCD1234"
+                  is_backup_code: true
+      responses:
+        '200':
+          description: MFA verified successfully, tokens returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid MFA code or token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_code:
+                  summary: Invalid MFA code
+                  value:
+                    error: "invalid_mfa_code"
+                    message: "Invalid MFA code"
+                    status_code: 401
+                invalid_token:
+                  summary: Invalid or expired MFA token
+                  value:
+                    error: "invalid_token"
+                    message: "Invalid token"
+                    status_code: 401
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
@@ -287,6 +472,793 @@ paths:
                 error: "weak_password"
                 message: "Password does not meet requirements"
                 status_code: 400
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/verify-email:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email address
+      description: |
+        Verify user's email address using the verification token sent via email.
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+            example:
+              token: "verification-token-uuid"
+      responses:
+        '200':
+          description: Email successfully verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: "Email verified successfully"
+        '401':
+          description: Invalid or expired verification token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/resend-verification:
+    post:
+      tags:
+        - Authentication
+      summary: Resend verification email
+      description: |
+        Request a new verification email. For security, the response is always the same
+        regardless of whether the email exists or is already verified.
+      operationId: resendVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+            example:
+              email: "user@example.com"
+      responses:
+        '200':
+          description: Verification email sent (response is always the same for security)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: "If the email exists and is not verified, a verification link has been sent"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me:
+    get:
+      tags:
+        - User Profile
+      summary: Get current user profile
+      description: |
+        Get the profile information of the currently authenticated user.
+      operationId: getProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - User Profile
+      summary: Update current user profile
+      description: |
+        Update the profile information of the currently authenticated user.
+      operationId: updateProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+            example:
+              name: "John Doe"
+              avatar_url: "https://example.com/avatar.jpg"
+              phone: "+1234567890"
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/change-password:
+    post:
+      tags:
+        - User Profile
+      summary: Change password
+      description: |
+        Change the password of the currently authenticated user.
+        Requires the current password for verification.
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            example:
+              current_password: "OldPassword123!"
+              new_password: "NewPassword456!"
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: "Password changed successfully"
+        '401':
+          description: Invalid current password or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: New password does not meet requirements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # Admin User CRUD
+  # ============================================================================
+
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List all users
+      description: List all users with pagination. Requires system admin privileges.
+      operationId: listAllUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsersResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not a system admin
+
+  /admin/users/{user_id}:
+    get:
+      tags:
+        - Admin
+      summary: Get user details
+      description: Get detailed information about a user. Requires system admin privileges.
+      operationId: getUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserDetailResponse'
+        '404':
+          description: User not found
+        '403':
+          description: Not a system admin
+    put:
+      tags:
+        - Admin
+      summary: Update user
+      description: Update user details. Requires system admin privileges.
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUpdateUserRequest'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserDetailResponse'
+        '404':
+          description: User not found
+        '403':
+          description: Not a system admin
+    delete:
+      tags:
+        - Admin
+      summary: Delete user permanently
+      description: Permanently delete a user. Requires system admin privileges.
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: User deleted
+        '404':
+          description: User not found
+        '403':
+          description: Not a system admin
+
+  /admin/users/{user_id}/activate:
+    post:
+      tags:
+        - Admin
+      summary: Activate user
+      description: Activate a deactivated user. Requires system admin privileges.
+      operationId: activateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: User activated
+        '404':
+          description: User not found
+        '403':
+          description: Not a system admin
+
+  /admin/users/{user_id}/deactivate:
+    post:
+      tags:
+        - Admin
+      summary: Deactivate user
+      description: Deactivate a user globally. Requires system admin privileges.
+      operationId: deactivateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: User deactivated
+        '404':
+          description: User not found
+        '403':
+          description: Not a system admin
+
+  /admin/users/{user_id}/roles:
+    get:
+      tags:
+        - Admin
+      summary: Get user roles across all apps
+      description: Get all roles assigned to a user across all apps. Requires system admin privileges.
+      operationId: getUserRoles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User roles info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRolesInfo'
+        '404':
+          description: User not found
+        '403':
+          description: Not a system admin
+
+  # ============================================================================
+  # Admin App CRUD
+  # ============================================================================
+
+  /admin/apps:
+    get:
+      tags:
+        - Admin
+      summary: List all apps
+      description: List all apps with pagination. Requires system admin privileges.
+      operationId: listAllApps
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated list of apps
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAppsResponse'
+        '403':
+          description: Not a system admin
+
+  /admin/apps/{app_id}:
+    get:
+      tags:
+        - Admin
+      summary: Get app details
+      description: Get detailed information about an app. Requires system admin privileges.
+      operationId: getApp
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: App details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAppDetailResponse'
+        '404':
+          description: App not found
+        '403':
+          description: Not a system admin
+    put:
+      tags:
+        - Admin
+      summary: Update app
+      description: Update app details. Requires system admin privileges.
+      operationId: updateApp
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUpdateAppRequest'
+      responses:
+        '200':
+          description: App updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAppDetailResponse'
+        '404':
+          description: App not found
+        '403':
+          description: Not a system admin
+    delete:
+      tags:
+        - Admin
+      summary: Delete app permanently
+      description: Permanently delete an app. Requires system admin privileges.
+      operationId: deleteApp
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: App deleted
+        '404':
+          description: App not found
+        '403':
+          description: Not a system admin
+
+  # ============================================================================
+  # User Role Management in Apps
+  # ============================================================================
+
+  /apps/{app_id}/users/{user_id}/roles:
+    get:
+      tags:
+        - Roles
+      summary: Get user roles in app
+      description: Get all roles assigned to a user in a specific app.
+      operationId: getUserRolesInApp
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoleResponse'
+        '404':
+          description: User or app not found
+    post:
+      tags:
+        - Roles
+      summary: Assign role to user
+      description: Assign a role to a user in a specific app.
+      operationId: assignRoleToUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRoleRequest'
+      responses:
+        '204':
+          description: Role assigned
+        '404':
+          description: User, app, or role not found
+
+  /apps/{app_id}/users/{user_id}/roles/{role_id}:
+    delete:
+      tags:
+        - Roles
+      summary: Remove role from user
+      description: Remove a role from a user in a specific app.
+      operationId: removeRoleFromUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Role removed
+        '404':
+          description: User, app, or role not found
+
+  /admin/users/search:
+    get:
+      tags:
+        - Admin
+      summary: Search users with filters
+      description: |
+        Search and filter users. Requires system admin privileges.
+      operationId: searchUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: email
+          in: query
+          description: Filter by email (partial match)
+          schema:
+            type: string
+        - name: name
+          in: query
+          description: Filter by name (partial match)
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+        - name: email_verified
+          in: query
+          description: Filter by email verified status
+          schema:
+            type: boolean
+        - name: is_system_admin
+          in: query
+          description: Filter by system admin status
+          schema:
+            type: boolean
+        - name: sort_by
+          in: query
+          description: Sort field (email, name, created_at)
+          schema:
+            type: string
+            default: created_at
+        - name: sort_order
+          in: query
+          description: Sort order (asc, desc)
+          schema:
+            type: string
+            default: desc
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserSearchResponse'
+        '403':
+          description: Insufficient permissions (not system admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/export:
+    get:
+      tags:
+        - Admin
+      summary: Export all users
+      description: |
+        Export all users as JSON. Requires system admin privileges.
+      operationId: exportUsers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users exported successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserExportData'
+        '403':
+          description: Insufficient permissions (not system admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/import:
+    post:
+      tags:
+        - Admin
+      summary: Import users
+      description: |
+        Bulk import users. Requires system admin privileges.
+      operationId: importUsers
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserImportRequest'
+      responses:
+        '200':
+          description: Import completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkImportResponse'
+        '403':
+          description: Insufficient permissions (not system admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/bulk-assign-role:
+    post:
+      tags:
+        - Admin
+      summary: Bulk assign role to users
+      description: |
+        Assign a role to multiple users at once. Requires system admin privileges.
+      operationId: bulkAssignRole
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkRoleAssignmentRequest'
+      responses:
+        '200':
+          description: Bulk assignment completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResponse'
+        '403':
+          description: Insufficient permissions (not system admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
@@ -557,6 +1529,399 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  # ============================================================================
+  # Security Enhancement Endpoints
+  # ============================================================================
+
+  /auth/logout:
+    post:
+      tags:
+        - Security
+      summary: Logout and revoke tokens
+      description: |
+        Logout the current user. This will:
+        - Revoke the current access token (blacklist it)
+        - Optionally revoke all sessions if `all_sessions: true`
+        
+        The revoked access token will be rejected by the middleware until it expires.
+      operationId: logout
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/sessions:
+    get:
+      tags:
+        - Security
+      summary: List active sessions
+      description: |
+        Get all active sessions for the current user.
+        Each session includes device info, IP address, and last activity time.
+        Sessions are created automatically on login.
+      operationId: listSessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSessionsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Security
+      summary: Revoke all other sessions
+      description: Revoke all sessions except the current one
+      operationId: revokeOtherSessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sessions revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSessionsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/sessions/revoke:
+    post:
+      tags:
+        - Security
+      summary: Revoke a specific session
+      description: Revoke a specific session by ID
+      operationId: revokeSession
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSessionRequest'
+      responses:
+        '200':
+          description: Session revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSessionsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa/totp/setup:
+    post:
+      tags:
+        - Security
+      summary: Setup TOTP MFA
+      description: |
+        Initialize TOTP (Time-based One-Time Password) setup.
+        Returns a secret and provisioning URI for authenticator apps.
+      operationId: setupTotp
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: TOTP setup initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupTotpResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa/totp/verify:
+    post:
+      tags:
+        - Security
+      summary: Verify TOTP setup
+      description: |
+        Verify TOTP setup with a code from the authenticator app.
+        Returns backup codes on successful verification.
+      operationId: verifyTotpSetup
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyTotpSetupRequest'
+      responses:
+        '200':
+          description: TOTP setup verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyTotpSetupResponse'
+        '401':
+          description: Invalid code or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa/methods:
+    get:
+      tags:
+        - Security
+      summary: List MFA methods
+      description: Get all MFA methods configured for the current user
+      operationId: listMfaMethods
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of MFA methods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMfaMethodsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa:
+    delete:
+      tags:
+        - Security
+      summary: Disable MFA
+      description: Disable MFA for the current user (requires password verification)
+      operationId: disableMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableMfaRequest'
+      responses:
+        '200':
+          description: MFA disabled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized or invalid password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa/backup-codes/regenerate:
+    post:
+      tags:
+        - Security
+      summary: Regenerate backup codes
+      description: Generate new backup codes (invalidates previous codes)
+      operationId: regenerateBackupCodes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegenerateBackupCodesRequest'
+      responses:
+        '200':
+          description: New backup codes generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegenerateBackupCodesResponse'
+        '401':
+          description: Unauthorized or invalid password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/audit-logs:
+    get:
+      tags:
+        - Security
+      summary: Get user's audit logs
+      description: Get audit logs for the current user
+      operationId: getAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action type
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAuditLogsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/audit-logs:
+    get:
+      tags:
+        - Admin
+      summary: Get all audit logs (admin only)
+      description: Get all audit logs with optional filters
+      operationId: getAllAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action type
+        - name: resource_type
+          in: query
+          schema:
+            type: string
+          description: Filter by resource type
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAuditLogsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - not a system admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/{user_id}/unlock:
+    post:
+      tags:
+        - Admin
+      summary: Unlock a user account (admin only)
+      description: Unlock a user account that was locked due to failed login attempts
+      operationId: unlockAccount
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User ID to unlock
+      responses:
+        '200':
+          description: Account unlocked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - not a system admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -603,6 +1968,49 @@ components:
           format: password
           description: User's password
           example: "SecurePassword123!"
+        app_id:
+          type: string
+          format: uuid
+          description: Optional app ID to check if user is banned from specific app
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    MfaRequiredResponse:
+      type: object
+      properties:
+        mfa_required:
+          type: boolean
+          description: Always true when MFA is required
+          example: true
+        mfa_token:
+          type: string
+          description: Temporary token to complete MFA verification (expires in 5 minutes)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        available_methods:
+          type: array
+          items:
+            type: string
+          description: List of available MFA methods (totp, sms, email)
+          example: ["totp"]
+
+    CompleteMfaLoginRequest:
+      type: object
+      required:
+        - mfa_token
+        - code
+      properties:
+        mfa_token:
+          type: string
+          description: MFA token received from login response
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        code:
+          type: string
+          description: MFA verification code (TOTP or backup code)
+          example: "123456"
+        is_backup_code:
+          type: boolean
+          default: false
+          description: Set to true if using a backup code instead of TOTP
+          example: false
 
     RefreshRequest:
       type: object
@@ -692,6 +2100,114 @@ components:
           format: uuid
           description: UUID of the role to assign
           example: "550e8400-e29b-41d4-a716-446655440000"
+
+    VerifyEmailRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: Email verification token
+          example: "verification-token-uuid"
+
+    ResendVerificationRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address to resend verification to
+          example: "user@example.com"
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: User's display name
+          example: "John Doe"
+        avatar_url:
+          type: string
+          maxLength: 500
+          description: URL to user's avatar image
+          example: "https://example.com/avatar.jpg"
+        phone:
+          type: string
+          maxLength: 20
+          description: User's phone number
+          example: "+1234567890"
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          format: password
+          description: Current password for verification
+          example: "OldPassword123!"
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          description: New password (must meet security requirements)
+          example: "NewPassword456!"
+
+    UserImportRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        name:
+          type: string
+          description: User's display name
+          example: "John Doe"
+        phone:
+          type: string
+          description: User's phone number
+          example: "+1234567890"
+        password:
+          type: string
+          format: password
+          description: User's password
+          example: "SecurePassword123!"
+
+    BulkRoleAssignmentRequest:
+      type: object
+      required:
+        - user_ids
+        - role_id
+        - app_id
+      properties:
+        user_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of user IDs to assign the role to
+          example: ["550e8400-e29b-41d4-a716-446655440000"]
+        role_id:
+          type: string
+          format: uuid
+          description: UUID of the role to assign
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        app_id:
+          type: string
+          format: uuid
+          description: UUID of the app
+          example: "550e8400-e29b-41d4-a716-446655440002"
 
     # Response Schemas
     RegisterResponse:
@@ -806,6 +2322,213 @@ components:
           description: HTTP status code
           example: 401
 
+    UserProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        name:
+          type: string
+          nullable: true
+          description: User's display name
+          example: "John Doe"
+        avatar_url:
+          type: string
+          nullable: true
+          description: URL to user's avatar image
+          example: "https://example.com/avatar.jpg"
+        phone:
+          type: string
+          nullable: true
+          description: User's phone number
+          example: "+1234567890"
+        is_active:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+        email_verified:
+          type: boolean
+          description: Whether the user's email is verified
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2024-12-29T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last profile update timestamp
+          example: "2024-12-29T12:00:00Z"
+
+    UserSearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        name:
+          type: string
+          nullable: true
+          description: User's display name
+          example: "John Doe"
+        is_active:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+        email_verified:
+          type: boolean
+          description: Whether the user's email is verified
+          example: true
+        is_system_admin:
+          type: boolean
+          description: Whether the user is a system admin
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2024-12-29T10:00:00Z"
+
+    PaginatedUserSearchResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSearchResult'
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          description: Items per page
+          example: 20
+        total:
+          type: integer
+          format: int64
+          description: Total number of items
+          example: 100
+
+    UserExportData:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        name:
+          type: string
+          nullable: true
+          description: User's display name
+          example: "John Doe"
+        phone:
+          type: string
+          nullable: true
+          description: User's phone number
+          example: "+1234567890"
+        is_active:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+        email_verified:
+          type: boolean
+          description: Whether the user's email is verified
+          example: true
+        is_system_admin:
+          type: boolean
+          description: Whether the user is a system admin
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2024-12-29T10:00:00Z"
+
+    BulkImportResponse:
+      type: object
+      properties:
+        imported_count:
+          type: integer
+          description: Number of successfully imported users
+          example: 10
+        failed_count:
+          type: integer
+          description: Number of failed imports
+          example: 2
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportError'
+
+    ImportError:
+      type: object
+      properties:
+        row:
+          type: integer
+          description: Row number in the import data
+          example: 3
+        email:
+          type: string
+          description: Email that failed to import
+          example: "duplicate@example.com"
+        error:
+          type: string
+          description: Error message
+          example: "Email already exists"
+
+    BulkOperationResponse:
+      type: object
+      properties:
+        success_count:
+          type: integer
+          description: Number of successful operations
+          example: 8
+        failed_count:
+          type: integer
+          description: Number of failed operations
+          example: 2
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkOperationError'
+
+    BulkOperationError:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: User ID that failed
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        error:
+          type: string
+          description: Error message
+          example: "User not found"
+
     # JWT Claims Schema (for documentation purposes)
     JwtClaims:
       type: object
@@ -848,3 +2571,441 @@ components:
             type: string
           description: List of permission codes the user has in this app
           example: ["read:users", "write:users"]
+
+    # ============================================================================
+    # Security Enhancement Schemas
+    # ============================================================================
+
+    LogoutRequest:
+      type: object
+      properties:
+        all_sessions:
+          type: boolean
+          default: false
+          description: If true, revoke all sessions (logout everywhere)
+
+    LogoutResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Successfully logged out"
+        sessions_revoked:
+          type: integer
+          example: 1
+
+    SessionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_name:
+          type: string
+          nullable: true
+          example: "Chrome Browser"
+        device_type:
+          type: string
+          nullable: true
+          example: "desktop"
+        ip_address:
+          type: string
+          nullable: true
+          example: "192.168.1.1"
+        last_active_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        is_current:
+          type: boolean
+
+    ListSessionsResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionResponse'
+        total:
+          type: integer
+
+    RevokeSessionRequest:
+      type: object
+      required:
+        - session_id
+      properties:
+        session_id:
+          type: string
+          format: uuid
+
+    RevokeSessionsResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Session revoked successfully"
+        revoked_count:
+          type: integer
+          example: 1
+
+    SetupTotpResponse:
+      type: object
+      properties:
+        method_id:
+          type: string
+          format: uuid
+        secret:
+          type: string
+          description: Base32 encoded TOTP secret
+          example: "JBSWY3DPEHPK3PXP"
+        provisioning_uri:
+          type: string
+          description: URI for authenticator apps
+          example: "otpauth://totp/AuthServer:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=AuthServer"
+        qr_code_data:
+          type: string
+          nullable: true
+          description: Base64 encoded QR code image
+
+    VerifyTotpSetupRequest:
+      type: object
+      required:
+        - method_id
+        - code
+      properties:
+        method_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: 6-digit TOTP code from authenticator app
+          example: "123456"
+
+    VerifyTotpSetupResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "TOTP setup completed successfully. Save your backup codes!"
+        backup_codes:
+          type: array
+          items:
+            type: string
+          description: List of backup codes (save these securely!)
+          example: ["ABCD1234", "EFGH5678", "IJKL9012"]
+
+    MfaMethodResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        method_type:
+          type: string
+          enum: [totp, sms, email]
+        is_primary:
+          type: boolean
+        is_verified:
+          type: boolean
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ListMfaMethodsResponse:
+      type: object
+      properties:
+        methods:
+          type: array
+          items:
+            $ref: '#/components/schemas/MfaMethodResponse'
+        mfa_enabled:
+          type: boolean
+        backup_codes_remaining:
+          type: integer
+
+    DisableMfaRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          description: Current password for verification
+        method_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Specific method to disable (if not provided, disables all)
+
+    RegenerateBackupCodesRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          description: Current password for verification
+
+    RegenerateBackupCodesResponse:
+      type: object
+      properties:
+        backup_codes:
+          type: array
+          items:
+            type: string
+          example: ["ABCD1234", "EFGH5678", "IJKL9012"]
+        message:
+          type: string
+          example: "New backup codes generated. Previous codes are now invalid."
+
+    AuditLogResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          example: "login"
+        resource_type:
+          type: string
+          example: "auth"
+        resource_id:
+          type: string
+          format: uuid
+          nullable: true
+        ip_address:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [success, failure]
+        created_at:
+          type: string
+          format: date-time
+        details:
+          type: object
+          nullable: true
+
+    ListAuditLogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogResponse'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    RateLimitErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "rate_limit_exceeded"
+        message:
+          type: string
+          example: "Too many requests"
+        retry_after_seconds:
+          type: integer
+          example: 60
+        limit:
+          type: integer
+          example: 5
+        remaining:
+          type: integer
+          example: 0
+
+    AccountLockedResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "account_locked"
+        message:
+          type: string
+          example: "Account is locked"
+        locked_until:
+          type: string
+          format: date-time
+        remaining_seconds:
+          type: integer
+          example: 900
+
+    # ============================================================================
+    # Admin CRUD Schemas
+    # ============================================================================
+
+    AdminUserDetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        email_verified:
+          type: boolean
+        is_system_admin:
+          type: boolean
+        mfa_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AdminAppDetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        owner_id:
+          type: string
+          format: uuid
+          nullable: true
+        has_secret:
+          type: boolean
+          description: Whether the app has a secret configured
+
+    AdminUpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: New email address
+        is_active:
+          type: boolean
+          description: Activate or deactivate user
+        is_system_admin:
+          type: boolean
+          description: Grant or revoke system admin privileges
+        email_verified:
+          type: boolean
+          description: Set email verification status
+
+    AdminUpdateAppRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New app name
+        owner_id:
+          type: string
+          format: uuid
+          description: New owner user ID
+
+    UserRolesInfo:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        apps:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppRoleInfo'
+
+    AppRoleInfo:
+      type: object
+      properties:
+        app_id:
+          type: string
+          format: uuid
+        app_code:
+          type: string
+        app_name:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleInfo'
+
+    RoleInfo:
+      type: object
+      properties:
+        role_id:
+          type: string
+          format: uuid
+        role_name:
+          type: string
+
+    PaginatedUsersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+          format: int64
+
+    PaginatedAppsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppResponse'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+          format: int64
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        is_active:
+          type: boolean
+        email_verified:
+          type: boolean
+        is_system_admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time

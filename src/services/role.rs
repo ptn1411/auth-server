@@ -118,4 +118,52 @@ impl RoleService {
 
         Ok(())
     }
+
+    /// Remove a role from a user for a specific app
+    pub async fn remove_role_from_user(
+        &self,
+        user_id: Uuid,
+        app_id: Uuid,
+        role_id: Uuid,
+    ) -> Result<(), RoleError> {
+        // Verify user exists
+        let user = self.user_repo.find_by_id(user_id).await
+            .map_err(|e| RoleError::InternalError(e.into()))?;
+        
+        if user.is_none() {
+            return Err(RoleError::UserNotFound);
+        }
+
+        // Verify role exists and belongs to the app
+        let role = self.role_repo.find_by_id(role_id).await?;
+        
+        match role {
+            None => return Err(RoleError::NotFound),
+            Some(r) if r.app_id != app_id => return Err(RoleError::NotFound),
+            _ => {}
+        }
+
+        // Remove the role
+        self.user_app_role_repo.remove_role(user_id, app_id, role_id).await?;
+
+        Ok(())
+    }
+
+    /// Get all roles for a user in a specific app
+    pub async fn get_user_roles_in_app(
+        &self,
+        user_id: Uuid,
+        app_id: Uuid,
+    ) -> Result<Vec<Role>, RoleError> {
+        let user_app_roles = self.user_app_role_repo.find_by_user_and_app(user_id, app_id).await?;
+        
+        let mut roles = Vec::new();
+        for uar in user_app_roles {
+            if let Some(role) = self.role_repo.find_by_id(uar.role_id).await? {
+                roles.push(role);
+            }
+        }
+        
+        Ok(roles)
+    }
 }

@@ -7,10 +7,15 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::config::AppState;
-use crate::dto::user_management::{PaginatedResponse, PaginationQuery};
+use crate::dto::user_management::{
+    AdminAppDetailResponse, AdminUpdateAppRequest, AdminUpdateUserRequest,
+    AdminUserDetailResponse, PaginatedResponse, PaginationQuery,
+};
 use crate::error::UserManagementError;
 use crate::models::{App, User};
-use crate::services::AdminService;
+use crate::services::{AdminService, AuditService};
+use crate::services::admin::{UserRolesInfo};
+use crate::models::AuditAction;
 use crate::utils::jwt::Claims;
 
 /// Response DTO for user info (excludes password_hash)
@@ -127,6 +132,210 @@ pub async fn deactivate_user_handler(
     
     let service = AdminService::new(state.pool.clone());
     service.deactivate_user(actor_id, user_id).await?;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ============================================================================
+// User CRUD Handlers
+// ============================================================================
+
+/// GET /admin/users/{user_id} - Get user details (admin only)
+pub async fn get_user_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<AdminUserDetailResponse>, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    let user = service.get_user(actor_id, user_id).await?;
+    
+    Ok(Json(AdminUserDetailResponse {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        avatar_url: user.avatar_url,
+        is_active: user.is_active,
+        email_verified: user.email_verified,
+        is_system_admin: user.is_system_admin,
+        mfa_enabled: user.mfa_enabled,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+    }))
+}
+
+/// PUT /admin/users/{user_id} - Update user (admin only)
+pub async fn update_user_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<AdminUpdateUserRequest>,
+) -> Result<Json<AdminUserDetailResponse>, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    let audit_service = AuditService::new(state.pool.clone());
+    
+    let user = service.update_user(
+        actor_id,
+        user_id,
+        req.email.as_deref(),
+        req.is_active,
+        req.is_system_admin,
+        req.email_verified,
+    ).await?;
+
+    // Log the update
+    let _ = audit_service.log_user_event(
+        actor_id,
+        AuditAction::UserUpdated,
+        user_id,
+        None,
+        None,
+        Some(serde_json::json!({
+            "updated_fields": {
+                "email": req.email.is_some(),
+                "is_active": req.is_active.is_some(),
+                "is_system_admin": req.is_system_admin.is_some(),
+                "email_verified": req.email_verified.is_some(),
+            }
+        })),
+    ).await;
+    
+    Ok(Json(AdminUserDetailResponse {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        avatar_url: user.avatar_url,
+        is_active: user.is_active,
+        email_verified: user.email_verified,
+        is_system_admin: user.is_system_admin,
+        mfa_enabled: user.mfa_enabled,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+    }))
+}
+
+/// DELETE /admin/users/{user_id} - Delete user permanently (admin only)
+pub async fn delete_user_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(user_id): Path<Uuid>,
+) -> Result<StatusCode, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    let audit_service = AuditService::new(state.pool.clone());
+    
+    service.delete_user(actor_id, user_id).await?;
+
+    // Log the deletion
+    let _ = audit_service.log_user_event(
+        actor_id,
+        AuditAction::UserDeleted,
+        user_id,
+        None,
+        None,
+        None,
+    ).await;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /admin/users/{user_id}/activate - Activate a user (admin only)
+pub async fn activate_user_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(user_id): Path<Uuid>,
+) -> Result<StatusCode, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    service.activate_user(actor_id, user_id).await?;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /admin/users/{user_id}/roles - Get all roles for a user (admin only)
+pub async fn get_user_roles_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<UserRolesInfo>, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    let roles_info = service.get_user_roles(actor_id, user_id).await?;
+    
+    Ok(Json(roles_info))
+}
+
+// ============================================================================
+// App CRUD Handlers
+// ============================================================================
+
+/// GET /admin/apps/{app_id} - Get app details (admin only)
+pub async fn get_app_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(app_id): Path<Uuid>,
+) -> Result<Json<AdminAppDetailResponse>, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    let app = service.get_app(actor_id, app_id).await?;
+    
+    Ok(Json(AdminAppDetailResponse {
+        id: app.id,
+        code: app.code,
+        name: app.name,
+        owner_id: app.owner_id,
+        has_secret: app.secret_hash.is_some(),
+    }))
+}
+
+/// PUT /admin/apps/{app_id} - Update app (admin only)
+pub async fn update_app_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(app_id): Path<Uuid>,
+    Json(req): Json<AdminUpdateAppRequest>,
+) -> Result<Json<AdminAppDetailResponse>, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    let app = service.update_app(actor_id, app_id, req.name.as_deref(), req.owner_id).await?;
+    
+    Ok(Json(AdminAppDetailResponse {
+        id: app.id,
+        code: app.code,
+        name: app.name,
+        owner_id: app.owner_id,
+        has_secret: app.secret_hash.is_some(),
+    }))
+}
+
+/// DELETE /admin/apps/{app_id} - Delete app permanently (admin only)
+pub async fn delete_app_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(app_id): Path<Uuid>,
+) -> Result<StatusCode, UserManagementError> {
+    let actor_id = claims.user_id()
+        .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let service = AdminService::new(state.pool.clone());
+    service.delete_app(actor_id, app_id).await?;
     
     Ok(StatusCode::NO_CONTENT)
 }

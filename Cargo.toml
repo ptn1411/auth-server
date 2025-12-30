@@ -8,7 +8,7 @@ edition = "2021"
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout"] }
 
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio", "mysql", "uuid", "chrono"] }
@@ -17,11 +17,19 @@ sqlx = { version = "0.7", features = ["runtime-tokio", "mysql", "uuid", "chrono"
 argon2 = "0.5"
 bcrypt = "0.15"
 
+# Cryptography
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+
 # Secret generation
 rand = "0.8"
 
 # JWT
 jsonwebtoken = "9"
+
+# Email
+lettre = { version = "0.11", features = ["tokio1-native-tls", "builder", "smtp-transport"] }
 
 # Utilities
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -40,6 +48,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Validation
 regex = "1"
+
+# URL encoding
+urlencoding = "2"
+
+# TOTP for MFA
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
 
 [dev-dependencies]
 proptest = "1"

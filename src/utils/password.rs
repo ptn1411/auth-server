@@ -2,6 +2,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use sha2::{Digest, Sha256};
 
 use crate::error::AuthError;
 
@@ -47,6 +48,22 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, AuthError> {
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok())
+}
+
+/// Hash a token using SHA-256 for storage
+/// Used for refresh tokens, session tokens, etc.
+/// 
+/// # Arguments
+/// * `token` - The token to hash
+/// 
+/// # Returns
+/// * `Ok(String)` - The hex-encoded SHA-256 hash
+/// * `Err(AuthError)` - If hashing fails
+pub fn hash_token(token: &str) -> Result<String, AuthError> {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let result = hasher.finalize();
+    Ok(hex::encode(result))
 }
 
 #[cfg(test)]

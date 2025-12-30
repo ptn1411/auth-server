@@ -66,7 +66,38 @@ pub struct MessageResponse {
 pub struct UserProfileResponse {
     pub id: Uuid,
     pub email: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub phone: Option<String>,
     pub is_active: bool,
     pub email_verified: bool,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Update user profile request
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub phone: Option<String>,
+}
+
+/// Change password request (when logged in)
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// Email verification request
+#[derive(Debug, Deserialize)]
+pub struct VerifyEmailRequest {
+    pub token: String,
+}
+
+/// Resend verification email request
+#[derive(Debug, Deserialize)]
+pub struct ResendVerificationRequest {
+    pub email: String,
 }

@@ -120,3 +120,36 @@ pub async fn assign_role_handler(
     
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// DELETE /apps/{app_id}/users/{user_id}/roles/{role_id} - Remove a role from a user
+pub async fn remove_role_handler(
+    State(state): State<AppState>,
+    Path((app_id, user_id, role_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<StatusCode, RoleError> {
+    let role_service = RoleService::new(state.pool.clone());
+    
+    role_service.remove_role_from_user(user_id, app_id, role_id).await?;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /apps/{app_id}/users/{user_id}/roles - Get all roles for a user in an app
+pub async fn get_user_roles_in_app_handler(
+    State(state): State<AppState>,
+    Path((app_id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Vec<RoleResponse>>, RoleError> {
+    let role_service = RoleService::new(state.pool.clone());
+    
+    let roles = role_service.get_user_roles_in_app(user_id, app_id).await?;
+    
+    let response: Vec<RoleResponse> = roles
+        .into_iter()
+        .map(|role| RoleResponse {
+            id: role.id,
+            app_id: role.app_id,
+            name: role.name,
+        })
+        .collect();
+    
+    Ok(Json(response))
+}

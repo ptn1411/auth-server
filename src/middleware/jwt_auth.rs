@@ -8,6 +8,7 @@ use axum::{
 
 use crate::config::AppState;
 use crate::error::AuthError;
+use crate::services::TokenRevocationService;
 use crate::utils::jwt::{Claims, JwtManager};
 
 /// JWT Authentication Middleware
@@ -23,6 +24,7 @@ use crate::utils::jwt::{Claims, JwtManager};
 /// - 11.3: WHEN a request contains an invalid or malformed JWT, THE Auth_Server SHALL reject 
 ///         the request with appropriate error
 /// - 11.4: THE Auth_Server SHALL check token expiry on every protected request
+/// - 11.5: THE Auth_Server SHALL check if token is revoked (blacklisted)
 /// 
 /// # Usage
 /// ```rust,ignore
@@ -42,13 +44,14 @@ pub async fn jwt_auth_middleware(
     let auth_header = request
         .headers()
         .get(AUTHORIZATION)
-        .and_then(|value| value.to_str().ok());
+        .and_then(|value| value.to_str().ok())
+        .map(|s| s.to_string());
 
     let token = match auth_header {
         Some(header) => {
             // Expect "Bearer <token>" format
             if let Some(token) = header.strip_prefix("Bearer ") {
-                token.trim()
+                token.trim().to_string()
             } else {
                 return Err(AuthError::InvalidToken);
             }
@@ -67,14 +70,27 @@ pub async fn jwt_auth_middleware(
     )?;
 
     // 3. Verify signature and expiry (Requirements 11.2, 11.3, 11.4)
-    let claims = jwt_manager.verify_token(token)?;
+    let claims = jwt_manager.verify_token(&token)?;
 
-    // 4. Inject claims into request extensions
+    // 4. Check if token is revoked (Requirement 11.5)
+    let revocation_service = TokenRevocationService::new(state.pool.clone());
+    if revocation_service.is_access_token_revoked(&token).await? {
+        return Err(AuthError::InvalidToken);
+    }
+
+    // 5. Store the raw token for potential revocation later
+    request.extensions_mut().insert(AccessToken(token));
+
+    // 6. Inject claims into request extensions
     request.extensions_mut().insert(claims);
 
-    // 5. Call next handler
+    // 7. Call next handler
     Ok(next.run(request).await)
 }
+
+/// Wrapper for access token to store in request extensions
+#[derive(Clone)]
+pub struct AccessToken(pub String);
 
 /// Extension trait to easily extract claims from request extensions
 pub trait ClaimsExt {

@@ -2,6 +2,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -54,6 +55,109 @@ impl AppTokenClaims {
     /// Check if this is an app token
     pub fn is_app_token(&self) -> bool {
         self.token_type == "app"
+    }
+}
+
+/// OAuth2 Access Token Claims
+/// 
+/// # Requirements
+/// - 5.4: Include sub (user_id), aud (client_id), scope, and exp claims
+/// - 5.5: Sign JWT tokens using RS256 algorithm
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OAuth2Claims {
+    /// Subject - user_id (for user tokens) or client_id (for client credentials)
+    pub sub: String,
+    /// Audience - client_id
+    pub aud: String,
+    /// Scopes granted (space-separated in JWT, but stored as Vec for convenience)
+    pub scope: Vec<String>,
+    /// Expiration timestamp (Unix timestamp)
+    pub exp: i64,
+    /// Issued at timestamp (Unix timestamp)
+    pub iat: i64,
+    /// Token type - "oauth2" to distinguish from other token types
+    pub token_type: String,
+}
+
+impl OAuth2Claims {
+    /// Maximum allowed expiration for OAuth2 access tokens (15 minutes = 900 seconds)
+    pub const MAX_ACCESS_TOKEN_EXPIRY_SECS: i64 = 900;
+
+    /// Create new OAuth2 claims for a user token
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user's UUID
+    /// * `client_id` - The OAuth client's ID
+    /// * `scopes` - The granted scopes
+    /// * `expiry_secs` - Token expiry in seconds (capped at MAX_ACCESS_TOKEN_EXPIRY_SECS)
+    pub fn new(user_id: Uuid, client_id: &str, scopes: Vec<String>, expiry_secs: i64) -> Self {
+        let now = Utc::now();
+        // Cap expiry at maximum allowed (15 minutes)
+        let actual_expiry = expiry_secs.min(Self::MAX_ACCESS_TOKEN_EXPIRY_SECS);
+        Self {
+            sub: user_id.to_string(),
+            aud: client_id.to_string(),
+            scope: scopes,
+            exp: (now + Duration::seconds(actual_expiry)).timestamp(),
+            iat: now.timestamp(),
+            token_type: "oauth2".to_string(),
+        }
+    }
+
+    /// Create new OAuth2 claims for a client credentials token (no user)
+    /// 
+    /// # Arguments
+    /// * `client_id` - The OAuth client's ID (used as both sub and aud)
+    /// * `scopes` - The granted scopes
+    /// * `expiry_secs` - Token expiry in seconds (capped at MAX_ACCESS_TOKEN_EXPIRY_SECS)
+    pub fn new_client_credentials(client_id: &str, scopes: Vec<String>, expiry_secs: i64) -> Self {
+        let now = Utc::now();
+        // Cap expiry at maximum allowed (15 minutes)
+        let actual_expiry = expiry_secs.min(Self::MAX_ACCESS_TOKEN_EXPIRY_SECS);
+        Self {
+            sub: client_id.to_string(),
+            aud: client_id.to_string(),
+            scope: scopes,
+            exp: (now + Duration::seconds(actual_expiry)).timestamp(),
+            iat: now.timestamp(),
+            token_type: "oauth2".to_string(),
+        }
+    }
+
+    /// Get the user_id from claims (returns None for client credentials tokens)
+    pub fn user_id(&self) -> Option<Uuid> {
+        Uuid::parse_str(&self.sub).ok()
+    }
+
+    /// Get the client_id (audience) from claims
+    pub fn client_id(&self) -> &str {
+        &self.aud
+    }
+
+    /// Get the scopes as a space-separated string
+    pub fn scope_string(&self) -> String {
+        self.scope.join(" ")
+    }
+
+    /// Check if the token has a specific scope
+    pub fn has_scope(&self, scope: &str) -> bool {
+        self.scope.iter().any(|s| s == scope)
+    }
+
+    /// Check if the token has all the required scopes
+    pub fn has_all_scopes(&self, required_scopes: &[String]) -> bool {
+        let token_scopes: HashSet<&str> = self.scope.iter().map(|s| s.as_str()).collect();
+        required_scopes.iter().all(|s| token_scopes.contains(s.as_str()))
+    }
+
+    /// Check if this is an OAuth2 token
+    pub fn is_oauth2_token(&self) -> bool {
+        self.token_type == "oauth2"
+    }
+
+    /// Check if the token is expired
+    pub fn is_expired(&self) -> bool {
+        Utc::now().timestamp() > self.exp
     }
 }
 
@@ -305,6 +409,124 @@ impl JwtManager {
         // Verify this is actually an app token
         if !claims.is_app_token() {
             return Err(AuthError::InvalidToken);
+        }
+        
+        Ok(claims)
+    }
+
+    /// Create an OAuth2 access token for a user
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user's UUID
+    /// * `client_id` - The OAuth client's ID
+    /// * `scopes` - The granted scopes
+    /// 
+    /// # Returns
+    /// * `Ok(String)` - The JWT OAuth2 access token
+    /// * `Err(AuthError)` - If token creation fails
+    /// 
+    /// # Requirements
+    /// - 5.4: Include sub (user_id), aud (client_id), scope, and exp claims
+    /// - 5.5: Sign JWT tokens using RS256 algorithm
+    pub fn create_oauth2_token(
+        &self,
+        user_id: Uuid,
+        client_id: &str,
+        scopes: Vec<String>,
+    ) -> Result<String, AuthError> {
+        let claims = OAuth2Claims::new(user_id, client_id, scopes, self.access_token_expiry_secs);
+        
+        let header = Header::new(Algorithm::RS256);
+        
+        encode(&header, &claims, &self.encoding_key)
+            .map_err(|e| AuthError::InternalError(anyhow::anyhow!("OAuth2 token encoding failed: {}", e)))
+    }
+
+    /// Create an OAuth2 access token for client credentials flow (no user)
+    /// 
+    /// # Arguments
+    /// * `client_id` - The OAuth client's ID
+    /// * `scopes` - The granted scopes
+    /// 
+    /// # Returns
+    /// * `Ok(String)` - The JWT OAuth2 access token
+    /// * `Err(AuthError)` - If token creation fails
+    /// 
+    /// # Requirements
+    /// - 6.1: Authenticate using client_id and client_secret
+    /// - 6.5: Issue service-scoped tokens for Internal_App
+    pub fn create_oauth2_client_credentials_token(
+        &self,
+        client_id: &str,
+        scopes: Vec<String>,
+    ) -> Result<String, AuthError> {
+        let claims = OAuth2Claims::new_client_credentials(client_id, scopes, self.access_token_expiry_secs);
+        
+        let header = Header::new(Algorithm::RS256);
+        
+        encode(&header, &claims, &self.encoding_key)
+            .map_err(|e| AuthError::InternalError(anyhow::anyhow!("OAuth2 client credentials token encoding failed: {}", e)))
+    }
+
+    /// Verify and decode an OAuth2 JWT token
+    /// 
+    /// # Arguments
+    /// * `token` - The JWT token to verify
+    /// 
+    /// # Returns
+    /// * `Ok(OAuth2Claims)` - The decoded OAuth2 claims if valid
+    /// * `Err(AuthError::TokenExpired)` - If the token has expired
+    /// * `Err(AuthError::InvalidToken)` - If the token is invalid or not an OAuth2 token
+    /// 
+    /// # Requirements
+    /// - 8.1: Verify token signature and expiration
+    /// - 8.4: Extract user_id and scopes from validated token
+    pub fn verify_oauth2_token(&self, token: &str) -> Result<OAuth2Claims, AuthError> {
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.validate_exp = true;
+        // Disable audience validation since we handle it manually
+        validation.validate_aud = false;
+        
+        let claims = decode::<OAuth2Claims>(token, &self.decoding_key, &validation)
+            .map(|data| data.claims)
+            .map_err(|e| {
+                match e.kind() {
+                    jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::TokenExpired,
+                    _ => AuthError::InvalidToken,
+                }
+            })?;
+        
+        // Verify this is actually an OAuth2 token
+        if !claims.is_oauth2_token() {
+            return Err(AuthError::InvalidToken);
+        }
+        
+        Ok(claims)
+    }
+
+    /// Verify an OAuth2 token and check that it has the required scopes
+    /// 
+    /// # Arguments
+    /// * `token` - The JWT token to verify
+    /// * `required_scopes` - The scopes required for the operation
+    /// 
+    /// # Returns
+    /// * `Ok(OAuth2Claims)` - The decoded OAuth2 claims if valid and has required scopes
+    /// * `Err(AuthError::TokenExpired)` - If the token has expired
+    /// * `Err(AuthError::InvalidToken)` - If the token is invalid
+    /// * `Err(AuthError::InsufficientScope)` - If the token lacks required scopes
+    /// 
+    /// # Requirements
+    /// - 8.3: Return 403 Forbidden when token lacks required scope
+    pub fn verify_oauth2_token_with_scopes(
+        &self,
+        token: &str,
+        required_scopes: &[String],
+    ) -> Result<OAuth2Claims, AuthError> {
+        let claims = self.verify_oauth2_token(token)?;
+        
+        if !claims.has_all_scopes(required_scopes) {
+            return Err(AuthError::InsufficientScope);
         }
         
         Ok(claims)
@@ -628,5 +850,247 @@ mod tests {
         let claims = AppTokenClaims::new(app_id, 900);
         
         assert!(claims.is_app_token());
+    }
+
+    // ============================================
+    // OAuth2 Token Tests
+    // ============================================
+
+    #[test]
+    fn test_create_oauth2_token() {
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string(), "email.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes).unwrap();
+        
+        assert!(!token.is_empty());
+        // JWT has 3 parts separated by dots
+        assert_eq!(token.split('.').count(), 3);
+    }
+
+    #[test]
+    fn test_verify_oauth2_token() {
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string(), "email.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes.clone()).unwrap();
+        let claims = manager.verify_oauth2_token(&token).unwrap();
+        
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.aud, client_id);
+        assert_eq!(claims.scope, scopes);
+        assert_eq!(claims.token_type, "oauth2");
+    }
+
+    #[test]
+    fn test_oauth2_token_contains_required_claims() {
+        // Property 18: JWT Required Claims
+        // For any issued JWT access token, decoding SHALL reveal sub (user_id), 
+        // aud (client_id), scope (array), and exp (expiration) claims
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes.clone()).unwrap();
+        let claims = manager.verify_oauth2_token(&token).unwrap();
+        
+        // Verify sub (user_id)
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.user_id(), Some(user_id));
+        
+        // Verify aud (client_id)
+        assert_eq!(claims.aud, client_id);
+        assert_eq!(claims.client_id(), client_id);
+        
+        // Verify scope (array)
+        assert_eq!(claims.scope, scopes);
+        
+        // Verify exp (expiration)
+        assert!(claims.exp > 0);
+        assert!(claims.exp > claims.iat);
+    }
+
+    #[test]
+    fn test_oauth2_token_uses_rs256() {
+        // Property 19: JWT RS256 Algorithm
+        // For any issued JWT token, the header SHALL specify alg: "RS256"
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes).unwrap();
+        
+        // Decode the header to verify algorithm
+        let parts: Vec<&str> = token.split('.').collect();
+        let header_json = base64::Engine::decode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            parts[0]
+        ).unwrap();
+        let header: serde_json::Value = serde_json::from_slice(&header_json).unwrap();
+        
+        assert_eq!(header["alg"], "RS256");
+    }
+
+    #[test]
+    fn test_oauth2_token_expiry_max_15_minutes() {
+        // Property 16: Access Token Short Expiration
+        // For any issued access token, the expiration time SHALL be at most 15 minutes
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes).unwrap();
+        let claims = manager.verify_oauth2_token(&token).unwrap();
+        
+        let duration = claims.exp - claims.iat;
+        
+        // Should be at most 900 seconds (15 minutes)
+        assert!(duration <= 900);
+    }
+
+    #[test]
+    fn test_oauth2_claims_expiry_capped() {
+        // Even if we try to create claims with longer expiry, it should be capped
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string()];
+        
+        // Try to create claims with 1 hour expiry
+        let claims = OAuth2Claims::new(user_id, client_id, scopes, 3600);
+        
+        let duration = claims.exp - claims.iat;
+        
+        // Should be capped at 900 seconds (15 minutes)
+        assert_eq!(duration, 900);
+    }
+
+    #[test]
+    fn test_oauth2_token_scope_checking() {
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string(), "email.read".to_string()];
+        
+        let claims = OAuth2Claims::new(user_id, client_id, scopes, 900);
+        
+        // Test has_scope
+        assert!(claims.has_scope("profile.read"));
+        assert!(claims.has_scope("email.read"));
+        assert!(!claims.has_scope("drive.read"));
+        
+        // Test has_all_scopes
+        assert!(claims.has_all_scopes(&["profile.read".to_string()]));
+        assert!(claims.has_all_scopes(&["profile.read".to_string(), "email.read".to_string()]));
+        assert!(!claims.has_all_scopes(&["profile.read".to_string(), "drive.read".to_string()]));
+    }
+
+    #[test]
+    fn test_oauth2_token_scope_string() {
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string(), "email.read".to_string()];
+        
+        let claims = OAuth2Claims::new(user_id, client_id, scopes, 900);
+        
+        assert_eq!(claims.scope_string(), "profile.read email.read");
+    }
+
+    #[test]
+    fn test_verify_oauth2_token_with_scopes_success() {
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string(), "email.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes).unwrap();
+        
+        // Should succeed when required scopes are present
+        let result = manager.verify_oauth2_token_with_scopes(
+            &token,
+            &["profile.read".to_string()]
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_oauth2_token_with_scopes_insufficient() {
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let client_id = "test-client-id";
+        let scopes = vec!["profile.read".to_string()];
+        
+        let token = manager.create_oauth2_token(user_id, client_id, scopes).unwrap();
+        
+        // Should fail when required scope is missing
+        let result = manager.verify_oauth2_token_with_scopes(
+            &token,
+            &["drive.read".to_string()]
+        );
+        assert!(matches!(result, Err(AuthError::InsufficientScope)));
+    }
+
+    #[test]
+    fn test_verify_invalid_oauth2_token() {
+        let manager = create_test_jwt_manager();
+        
+        let result = manager.verify_oauth2_token("invalid.token.here");
+        
+        assert!(matches!(result, Err(AuthError::InvalidToken)));
+    }
+
+    #[test]
+    fn test_verify_user_token_as_oauth2_token_fails() {
+        // User tokens should not be accepted as OAuth2 tokens
+        let manager = create_test_jwt_manager();
+        let user_id = Uuid::new_v4();
+        let apps = HashMap::new();
+        
+        let user_token = manager.create_access_token(user_id, apps).unwrap();
+        let result = manager.verify_oauth2_token(&user_token);
+        
+        // Should fail because user token doesn't have token_type: "oauth2"
+        assert!(matches!(result, Err(AuthError::InvalidToken)));
+    }
+
+    #[test]
+    fn test_create_oauth2_client_credentials_token() {
+        let manager = create_test_jwt_manager();
+        let client_id = "internal-service";
+        let scopes = vec!["service.read".to_string()];
+        
+        let token = manager.create_oauth2_client_credentials_token(client_id, scopes.clone()).unwrap();
+        let claims = manager.verify_oauth2_token(&token).unwrap();
+        
+        // For client credentials, sub and aud are both client_id
+        assert_eq!(claims.sub, client_id);
+        assert_eq!(claims.aud, client_id);
+        assert_eq!(claims.scope, scopes);
+        assert_eq!(claims.token_type, "oauth2");
+        
+        // user_id() should return None for client credentials tokens (not a valid UUID)
+        assert!(claims.user_id().is_none());
+    }
+
+    #[test]
+    fn test_oauth2_claims_is_oauth2_token() {
+        let user_id = Uuid::new_v4();
+        let claims = OAuth2Claims::new(user_id, "client-id", vec![], 900);
+        
+        assert!(claims.is_oauth2_token());
+    }
+
+    #[test]
+    fn test_oauth2_claims_is_expired() {
+        let user_id = Uuid::new_v4();
+        let claims = OAuth2Claims::new(user_id, "client-id", vec![], 900);
+        
+        // Fresh token should not be expired
+        assert!(!claims.is_expired());
     }
 }

@@ -9,10 +9,15 @@ pub struct User {
     pub id: Uuid,
     pub email: String,
     pub password_hash: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub phone: Option<String>,
     pub is_active: bool,
     pub email_verified: bool,
     pub is_system_admin: bool,
+    pub mfa_enabled: bool,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// Row type for MySQL query results
@@ -21,10 +26,15 @@ pub struct UserRow {
     pub id: String,
     pub email: String,
     pub password_hash: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub phone: Option<String>,
     pub is_active: bool,
     pub email_verified: bool,
     pub is_system_admin: bool,
+    pub mfa_enabled: bool,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 impl From<UserRow> for User {
@@ -33,12 +43,28 @@ impl From<UserRow> for User {
             id: Uuid::parse_str(&row.id).unwrap_or_default(),
             email: row.email,
             password_hash: row.password_hash,
+            name: row.name,
+            avatar_url: row.avatar_url,
+            phone: row.phone,
             is_active: row.is_active,
             email_verified: row.email_verified,
             is_system_admin: row.is_system_admin,
+            mfa_enabled: row.mfa_enabled,
             created_at: row.created_at,
+            updated_at: row.updated_at,
         }
     }
+}
+
+/// Email verification token
+#[derive(Debug, Clone)]
+pub struct EmailVerificationToken {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+    pub used: bool,
+    pub created_at: DateTime<Utc>,
 }
 
 // Implement FromRow for User by delegating to UserRow

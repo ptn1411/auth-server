@@ -267,6 +267,62 @@ impl AppRepository {
         // Flatten Option<Option<String>> to Option<String>
         Ok(hash.flatten())
     }
+
+    /// Update app details
+    pub async fn update(&self, app_id: Uuid, name: Option<&str>, owner_id: Option<Uuid>) -> Result<App, AppError> {
+        let mut updates = Vec::new();
+        
+        if name.is_some() {
+            updates.push("name = ?");
+        }
+        if owner_id.is_some() {
+            updates.push("owner_id = ?");
+        }
+
+        if updates.is_empty() {
+            return self.find_by_id(app_id).await?.ok_or(AppError::NotFound);
+        }
+
+        let query = format!(
+            "UPDATE apps SET {} WHERE id = ?",
+            updates.join(", ")
+        );
+
+        let mut q = sqlx::query(&query);
+        
+        if let Some(n) = name {
+            q = q.bind(n);
+        }
+        if let Some(o) = owner_id {
+            q = q.bind(o.to_string());
+        }
+        q = q.bind(app_id.to_string());
+
+        let result = q.execute(&self.pool)
+            .await
+            .map_err(|e| AppError::InternalError(e.into()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound);
+        }
+
+        self.find_by_id(app_id).await?.ok_or(AppError::NotFound)
+    }
+
+    /// Delete an app
+    pub async fn delete(&self, app_id: Uuid) -> Result<(), AppError> {
+        let result = sqlx::query("DELETE FROM apps WHERE id = ?")
+            .bind(app_id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::InternalError(e.into()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound);
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

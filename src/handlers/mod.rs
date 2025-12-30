@@ -4,3 +4,6 @@ pub mod role;
 pub mod permission;
 pub mod user_management;
 pub mod admin;
+pub mod oauth;
+pub mod user_profile;
+pub mod security;

@@ -54,7 +54,7 @@ impl UserRepository {
     pub async fn find_by_email(&self, email: &str) -> Result<Option<User>, AuthError> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, email_verified, is_system_admin, created_at
+            SELECT id, email, password_hash, name, avatar_url, phone, is_active, email_verified, is_system_admin, mfa_enabled, created_at, updated_at
             FROM users
             WHERE email = ?
             "#,
@@ -71,7 +71,7 @@ impl UserRepository {
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, AuthError> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, email_verified, is_system_admin, created_at
+            SELECT id, email, password_hash, name, avatar_url, phone, is_active, email_verified, is_system_admin, mfa_enabled, created_at, updated_at
             FROM users
             WHERE id = ?
             "#,
@@ -183,7 +183,7 @@ impl UserRepository {
 
         let users = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, email_verified, is_system_admin, created_at
+            SELECT id, email, password_hash, name, avatar_url, phone, is_active, email_verified, is_system_admin, mfa_enabled, created_at, updated_at
             FROM users
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
@@ -211,6 +211,283 @@ impl UserRepository {
         .map_err(|e| AuthError::InternalError(e.into()))?;
 
         Ok(count as u64)
+    }
+
+    /// Update user profile (name, avatar_url, phone)
+    pub async fn update_profile(
+        &self,
+        user_id: Uuid,
+        name: Option<String>,
+        avatar_url: Option<String>,
+        phone: Option<String>,
+    ) -> Result<User, AuthError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET name = COALESCE(?, name),
+                avatar_url = COALESCE(?, avatar_url),
+                phone = COALESCE(?, phone),
+                updated_at = NOW()
+            WHERE id = ?
+            "#,
+        )
+        .bind(name)
+        .bind(avatar_url)
+        .bind(phone)
+        .bind(user_id.to_string())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        self.find_by_id(user_id)
+            .await?
+            .ok_or(AuthError::UserNotFound)
+    }
+
+    /// Set email verified status
+    pub async fn set_email_verified(&self, user_id: Uuid, verified: bool) -> Result<(), AuthError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE users
+            SET email_verified = ?, updated_at = NOW()
+            WHERE id = ?
+            "#,
+        )
+        .bind(verified)
+        .bind(user_id.to_string())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+
+        Ok(())
+    }
+
+    /// Search users with filters
+    pub async fn search(
+        &self,
+        email: Option<&str>,
+        name: Option<&str>,
+        is_active: Option<bool>,
+        email_verified: Option<bool>,
+        is_system_admin: Option<bool>,
+        sort_by: &str,
+        sort_order: &str,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<User>, AuthError> {
+        let offset = (page.saturating_sub(1)) * limit;
+        
+        // Validate sort_by to prevent SQL injection
+        let sort_column = match sort_by {
+            "email" => "email",
+            "name" => "name",
+            "created_at" => "created_at",
+            _ => "created_at",
+        };
+        
+        let sort_dir = if sort_order.to_lowercase() == "asc" { "ASC" } else { "DESC" };
+        
+        let query = format!(
+            r#"
+            SELECT id, email, password_hash, name, avatar_url, phone, is_active, email_verified, is_system_admin, mfa_enabled, created_at, updated_at
+            FROM users
+            WHERE (? IS NULL OR email LIKE CONCAT('%', ?, '%'))
+              AND (? IS NULL OR name LIKE CONCAT('%', ?, '%'))
+              AND (? IS NULL OR is_active = ?)
+              AND (? IS NULL OR email_verified = ?)
+              AND (? IS NULL OR is_system_admin = ?)
+            ORDER BY {} {}
+            LIMIT ? OFFSET ?
+            "#,
+            sort_column, sort_dir
+        );
+
+        let users = sqlx::query_as::<_, User>(&query)
+            .bind(email)
+            .bind(email.unwrap_or(""))
+            .bind(name)
+            .bind(name.unwrap_or(""))
+            .bind(is_active)
+            .bind(is_active.unwrap_or(false))
+            .bind(email_verified)
+            .bind(email_verified.unwrap_or(false))
+            .bind(is_system_admin)
+            .bind(is_system_admin.unwrap_or(false))
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        Ok(users)
+    }
+
+    /// Count users matching search criteria
+    pub async fn count_search(
+        &self,
+        email: Option<&str>,
+        name: Option<&str>,
+        is_active: Option<bool>,
+        email_verified: Option<bool>,
+        is_system_admin: Option<bool>,
+    ) -> Result<u64, AuthError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) as count
+            FROM users
+            WHERE (? IS NULL OR email LIKE CONCAT('%', ?, '%'))
+              AND (? IS NULL OR name LIKE CONCAT('%', ?, '%'))
+              AND (? IS NULL OR is_active = ?)
+              AND (? IS NULL OR email_verified = ?)
+              AND (? IS NULL OR is_system_admin = ?)
+            "#,
+        )
+        .bind(email)
+        .bind(email.unwrap_or(""))
+        .bind(name)
+        .bind(name.unwrap_or(""))
+        .bind(is_active)
+        .bind(is_active.unwrap_or(false))
+        .bind(email_verified)
+        .bind(email_verified.unwrap_or(false))
+        .bind(is_system_admin)
+        .bind(is_system_admin.unwrap_or(false))
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        Ok(count as u64)
+    }
+
+    /// Create user with profile data (for bulk import)
+    pub async fn create_user_with_profile(
+        &self,
+        email: &str,
+        password_hash: &str,
+        name: Option<&str>,
+        phone: Option<&str>,
+    ) -> Result<User, AuthError> {
+        let id = Uuid::new_v4();
+        
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, email, password_hash, name, phone)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id.to_string())
+        .bind(email)
+        .bind(password_hash)
+        .bind(name)
+        .bind(phone)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.code().map(|c| c == "23000").unwrap_or(false) 
+                    || db_err.message().contains("Duplicate entry") {
+                    return AuthError::EmailAlreadyExists;
+                }
+            }
+            AuthError::InternalError(e.into())
+        })?;
+
+        self.find_by_id(id).await?.ok_or(AuthError::InternalError(anyhow::anyhow!("Failed to fetch created user")))
+    }
+
+    /// Delete a user permanently
+    pub async fn delete(&self, user_id: Uuid) -> Result<(), AuthError> {
+        let result = sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+
+        Ok(())
+    }
+
+    /// Update user by admin (email, is_active, is_system_admin)
+    pub async fn admin_update(
+        &self,
+        user_id: Uuid,
+        email: Option<&str>,
+        is_active: Option<bool>,
+        is_system_admin: Option<bool>,
+        email_verified: Option<bool>,
+    ) -> Result<User, AuthError> {
+        // Build dynamic update query
+        let mut updates = Vec::new();
+        let mut bindings: Vec<String> = Vec::new();
+
+        if let Some(e) = email {
+            updates.push("email = ?");
+            bindings.push(e.to_string());
+        }
+        if let Some(a) = is_active {
+            updates.push("is_active = ?");
+            bindings.push(a.to_string());
+        }
+        if let Some(s) = is_system_admin {
+            updates.push("is_system_admin = ?");
+            bindings.push(s.to_string());
+        }
+        if let Some(v) = email_verified {
+            updates.push("email_verified = ?");
+            bindings.push(v.to_string());
+        }
+
+        if updates.is_empty() {
+            return self.find_by_id(user_id).await?.ok_or(AuthError::UserNotFound);
+        }
+
+        updates.push("updated_at = NOW()");
+
+        let query = format!(
+            "UPDATE users SET {} WHERE id = ?",
+            updates.join(", ")
+        );
+
+        let mut q = sqlx::query(&query);
+        
+        if let Some(e) = email {
+            q = q.bind(e);
+        }
+        if let Some(a) = is_active {
+            q = q.bind(a);
+        }
+        if let Some(s) = is_system_admin {
+            q = q.bind(s);
+        }
+        if let Some(v) = email_verified {
+            q = q.bind(v);
+        }
+        q = q.bind(user_id.to_string());
+
+        let result = q.execute(&self.pool)
+            .await
+            .map_err(|e| {
+                if let sqlx::Error::Database(db_err) = &e {
+                    if db_err.code().map(|c| c == "23000").unwrap_or(false) 
+                        || db_err.message().contains("Duplicate entry") {
+                        return AuthError::EmailAlreadyExists;
+                    }
+                }
+                AuthError::InternalError(e.into())
+            })?;
+
+        if result.rows_affected() == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+
+        self.find_by_id(user_id).await?.ok_or(AuthError::UserNotFound)
     }
 }
 

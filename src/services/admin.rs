@@ -4,7 +4,30 @@ use uuid::Uuid;
 use crate::dto::user_management::PaginatedResponse;
 use crate::error::UserManagementError;
 use crate::models::{App, User};
-use crate::repositories::{AppRepository, UserRepository};
+use crate::repositories::{AppRepository, UserRepository, UserAppRoleRepository};
+
+/// User roles info across all apps
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UserRolesInfo {
+    pub user_id: Uuid,
+    pub apps: Vec<AppRoleInfo>,
+}
+
+/// Role info for a specific app
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AppRoleInfo {
+    pub app_id: Uuid,
+    pub app_code: String,
+    pub app_name: String,
+    pub roles: Vec<RoleInfo>,
+}
+
+/// Basic role info
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RoleInfo {
+    pub role_id: Uuid,
+    pub role_name: String,
+}
 
 /// Service for system admin operations
 /// 
@@ -12,8 +35,10 @@ use crate::repositories::{AppRepository, UserRepository};
 /// Requirements: 7.2, 7.3, 7.4, 7.5
 #[derive(Clone)]
 pub struct AdminService {
+    pool: MySqlPool,
     user_repo: UserRepository,
     app_repo: AppRepository,
+    user_app_role_repo: UserAppRoleRepository,
 }
 
 impl AdminService {
@@ -21,7 +46,9 @@ impl AdminService {
     pub fn new(pool: MySqlPool) -> Self {
         Self {
             user_repo: UserRepository::new(pool.clone()),
-            app_repo: AppRepository::new(pool),
+            app_repo: AppRepository::new(pool.clone()),
+            user_app_role_repo: UserAppRoleRepository::new(pool.clone()),
+            pool,
         }
     }
 
@@ -161,5 +188,184 @@ impl AdminService {
             .map_err(|e| UserManagementError::InternalError(e.into()))?;
 
         Ok(())
+    }
+
+    /// Get user details by ID (admin only)
+    pub async fn get_user(
+        &self,
+        actor_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<User, UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        self.user_repo.find_by_id(user_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?
+            .ok_or(UserManagementError::UserNotFound)
+    }
+
+    /// Update user by admin
+    pub async fn update_user(
+        &self,
+        actor_id: Uuid,
+        user_id: Uuid,
+        email: Option<&str>,
+        is_active: Option<bool>,
+        is_system_admin: Option<bool>,
+        email_verified: Option<bool>,
+    ) -> Result<User, UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        // Prevent admin from removing their own admin status
+        if is_system_admin == Some(false) && actor_id == user_id {
+            return Err(UserManagementError::InternalError(
+                anyhow::anyhow!("Cannot remove your own admin status")
+            ));
+        }
+
+        self.user_repo.admin_update(user_id, email, is_active, is_system_admin, email_verified).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))
+    }
+
+    /// Delete user permanently (admin only)
+    pub async fn delete_user(
+        &self,
+        actor_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        // Prevent admin from deleting themselves
+        if actor_id == user_id {
+            return Err(UserManagementError::InternalError(
+                anyhow::anyhow!("Cannot delete your own account")
+            ));
+        }
+
+        // Check if user exists
+        let user = self.user_repo.find_by_id(user_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?;
+        
+        if user.is_none() {
+            return Err(UserManagementError::UserNotFound);
+        }
+
+        self.user_repo.delete(user_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))
+    }
+
+    /// Activate a user (admin only)
+    pub async fn activate_user(
+        &self,
+        actor_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        self.user_repo.set_active(user_id, true).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))
+    }
+
+    /// Get app details by ID (admin only)
+    pub async fn get_app(
+        &self,
+        actor_id: Uuid,
+        app_id: Uuid,
+    ) -> Result<App, UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        self.app_repo.find_by_id(app_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?
+            .ok_or(UserManagementError::AppNotFound)
+    }
+
+    /// Update app by admin
+    pub async fn update_app(
+        &self,
+        actor_id: Uuid,
+        app_id: Uuid,
+        name: Option<&str>,
+        owner_id: Option<Uuid>,
+    ) -> Result<App, UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        self.app_repo.update(app_id, name, owner_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))
+    }
+
+    /// Delete app permanently (admin only)
+    pub async fn delete_app(
+        &self,
+        actor_id: Uuid,
+        app_id: Uuid,
+    ) -> Result<(), UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        self.app_repo.delete(app_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))
+    }
+
+    /// Get all roles for a user across all apps (admin only)
+    pub async fn get_user_roles(
+        &self,
+        actor_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<UserRolesInfo, UserManagementError> {
+        self.verify_admin(actor_id).await?;
+
+        // Check if user exists
+        let user = self.user_repo.find_by_id(user_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?;
+        
+        if user.is_none() {
+            return Err(UserManagementError::UserNotFound);
+        }
+
+        // Get all roles for user with app info
+        let rows = sqlx::query_as::<_, (String, String, String, String, String)>(
+            r#"
+            SELECT 
+                a.id as app_id,
+                a.code as app_code,
+                a.name as app_name,
+                r.id as role_id,
+                r.name as role_name
+            FROM user_app_roles uar
+            JOIN apps a ON uar.app_id = a.id
+            JOIN roles r ON uar.role_id = r.id
+            WHERE uar.user_id = ?
+            ORDER BY a.code, r.name
+            "#,
+        )
+        .bind(user_id.to_string())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| UserManagementError::InternalError(e.into()))?;
+
+        // Group by app
+        let mut apps_map: std::collections::HashMap<Uuid, AppRoleInfo> = std::collections::HashMap::new();
+        
+        for (app_id_str, app_code, app_name, role_id_str, role_name) in rows {
+            let app_id = Uuid::parse_str(&app_id_str)
+                .map_err(|e| UserManagementError::InternalError(e.into()))?;
+            let role_id = Uuid::parse_str(&role_id_str)
+                .map_err(|e| UserManagementError::InternalError(e.into()))?;
+
+            let app_info = apps_map.entry(app_id).or_insert_with(|| AppRoleInfo {
+                app_id,
+                app_code: app_code.clone(),
+                app_name: app_name.clone(),
+                roles: Vec::new(),
+            });
+
+            app_info.roles.push(RoleInfo {
+                role_id,
+                role_name,
+            });
+        }
+
+        Ok(UserRolesInfo {
+            user_id,
+            apps: apps_map.into_values().collect(),
+        })
     }
 }

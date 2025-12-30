@@ -6,10 +6,15 @@ use uuid::Uuid;
 
 use crate::error::AuthError;
 use crate::models::User;
-use crate::repositories::{UserAppRepository, UserRepository};
+use crate::repositories::{MfaRepository, UserAppRepository, UserRepository};
+use crate::services::{
+    AccountLockoutService, AuditService, LockoutConfig, MfaService, RateLimitConfig,
+    RateLimiterService, SessionService, DeviceInfo,
+};
+use crate::models::AuditAction;
 use crate::utils::email::validate_email;
 use crate::utils::jwt::{AppClaims, JwtManager, TokenPair};
-use crate::utils::password::{hash_password, verify_password};
+use crate::utils::password::{hash_password, hash_token, verify_password};
 
 /// Minimum password length requirement
 const MIN_PASSWORD_LENGTH: usize = 8;
@@ -20,6 +25,40 @@ const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 7;
 /// Password reset token expiry in hours
 const PASSWORD_RESET_TOKEN_EXPIRY_HOURS: i64 = 1;
 
+/// MFA token expiry in minutes
+const MFA_TOKEN_EXPIRY_MINUTES: i64 = 5;
+
+/// Login context containing request metadata
+#[derive(Debug, Clone, Default)]
+pub struct LoginContext {
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+/// Result of login attempt - either tokens or MFA required
+#[derive(Debug, Clone)]
+pub enum LoginResult {
+    /// Login successful, tokens and session returned
+    Success {
+        tokens: TokenPair,
+        session_id: Uuid,
+    },
+    /// MFA verification required
+    MfaRequired {
+        mfa_token: String,
+        user_id: Uuid,
+        available_methods: Vec<String>,
+    },
+}
+
+/// MFA token data stored temporarily
+#[derive(Debug, Clone)]
+pub struct MfaTokenData {
+    pub user_id: Uuid,
+    pub app_id: Option<Uuid>,
+    pub expires_at: chrono::DateTime<Utc>,
+}
+
 /// Authentication service handling user registration, login, token refresh, and password reset
 #[derive(Clone)]
 pub struct AuthService {
@@ -27,6 +66,12 @@ pub struct AuthService {
     user_repo: UserRepository,
     user_app_repo: UserAppRepository,
     jwt_manager: JwtManager,
+    rate_limiter: RateLimiterService,
+    lockout_service: AccountLockoutService,
+    audit_service: AuditService,
+    mfa_service: MfaService,
+    mfa_repo: MfaRepository,
+    session_service: SessionService,
 }
 
 impl AuthService {
@@ -34,11 +79,23 @@ impl AuthService {
     pub fn new(pool: MySqlPool, jwt_manager: JwtManager) -> Self {
         let user_repo = UserRepository::new(pool.clone());
         let user_app_repo = UserAppRepository::new(pool.clone());
+        let rate_limiter = RateLimiterService::new(pool.clone());
+        let lockout_service = AccountLockoutService::new(pool.clone(), LockoutConfig::default());
+        let audit_service = AuditService::new(pool.clone());
+        let session_service = SessionService::new(pool.clone(), REFRESH_TOKEN_EXPIRY_DAYS);
+        let mfa_service = MfaService::new(pool.clone(), "AuthServer".to_string());
+        let mfa_repo = MfaRepository::new(pool.clone());
         Self {
             pool,
             user_repo,
             user_app_repo,
             jwt_manager,
+            rate_limiter,
+            lockout_service,
+            audit_service,
+            mfa_service,
+            mfa_repo,
+            session_service,
         }
     }
 
@@ -61,32 +118,199 @@ impl AuthService {
 
     /// Login a user with email and password
     /// If app_id is provided, checks if user is banned from that app (Requirement 3.4)
-    pub async fn login(&self, email: &str, password: &str, app_id: Option<Uuid>) -> Result<TokenPair, AuthError> {
+    /// Now includes rate limiting, account lockout protection, and MFA support
+    pub async fn login(
+        &self,
+        email: &str,
+        password: &str,
+        app_id: Option<Uuid>,
+        context: LoginContext,
+    ) -> Result<LoginResult, AuthError> {
+        // Create rate limit identifier from IP + email
+        let identifier = RateLimiterService::create_identifier(
+            context.ip_address.as_deref(),
+            Some(email),
+        );
+
+        // Check rate limit before processing login
+        let rate_limit_config = RateLimitConfig::login();
+        let rate_result = self
+            .rate_limiter
+            .check_and_increment(&identifier, "login", &rate_limit_config)
+            .await?;
+
+        if !rate_result.allowed {
+            // Log rate limit event
+            let _ = self
+                .audit_service
+                .log_auth_event(
+                    None,
+                    AuditAction::LoginFailed,
+                    context.ip_address.as_deref(),
+                    context.user_agent.as_deref(),
+                    Some(serde_json::json!({
+                        "reason": "rate_limited",
+                        "email": email
+                    })),
+                    false,
+                )
+                .await;
+
+            return Err(AuthError::RateLimitExceeded {
+                retry_after_seconds: rate_result.retry_after_seconds.unwrap_or(60),
+                limit: rate_result.max_requests,
+                remaining: rate_result.remaining,
+            });
+        }
+
         // Find user by email (Requirement 2.2)
-        let user = self.user_repo
-            .find_by_email(email)
-            .await?
-            .ok_or(AuthError::InvalidCredentials)?;
+        let user = match self.user_repo.find_by_email(email).await? {
+            Some(u) => u,
+            None => {
+                // Log failed login attempt (user not found)
+                let _ = self
+                    .audit_service
+                    .log_auth_event(
+                        None,
+                        AuditAction::LoginFailed,
+                        context.ip_address.as_deref(),
+                        context.user_agent.as_deref(),
+                        Some(serde_json::json!({
+                            "reason": "user_not_found",
+                            "email": email
+                        })),
+                        false,
+                    )
+                    .await;
+                return Err(AuthError::InvalidCredentials);
+            }
+        };
+
+        // Check if account is locked
+        if self.lockout_service.is_locked(user.id).await? {
+            let lockout_info = self.lockout_service.get_lockout_info(user.id).await?;
+            if let Some(locked_until) = lockout_info.locked_until {
+                let remaining_seconds = (locked_until - Utc::now()).num_seconds().max(0);
+
+                // Log locked account access attempt
+                let _ = self
+                    .audit_service
+                    .log_auth_event(
+                        Some(user.id),
+                        AuditAction::LoginFailed,
+                        context.ip_address.as_deref(),
+                        context.user_agent.as_deref(),
+                        Some(serde_json::json!({
+                            "reason": "account_locked",
+                            "locked_until": locked_until
+                        })),
+                        false,
+                    )
+                    .await;
+
+                return Err(AuthError::AccountLocked {
+                    locked_until,
+                    remaining_seconds,
+                });
+            }
+        }
 
         // Verify password (Requirement 2.1, 2.2)
         let is_valid = verify_password(password, &user.password_hash)?;
         if !is_valid {
+            // Record failed login attempt for lockout
+            let lockout_info = self
+                .lockout_service
+                .record_failed_attempt(user.id)
+                .await?;
+
+            // Log failed login attempt
+            let _ = self
+                .audit_service
+                .log_auth_event(
+                    Some(user.id),
+                    AuditAction::LoginFailed,
+                    context.ip_address.as_deref(),
+                    context.user_agent.as_deref(),
+                    Some(serde_json::json!({
+                        "reason": "invalid_password",
+                        "failed_attempts": lockout_info.failed_attempts,
+                        "remaining_attempts": lockout_info.remaining_attempts
+                    })),
+                    false,
+                )
+                .await;
+
+            // Check if account just got locked
+            if lockout_info.is_locked {
+                if let Some(locked_until) = lockout_info.locked_until {
+                    let remaining_seconds = (locked_until - Utc::now()).num_seconds().max(0);
+
+                    // Log account locked event
+                    let _ = self
+                        .audit_service
+                        .log_auth_event(
+                            Some(user.id),
+                            AuditAction::AccountLocked,
+                            context.ip_address.as_deref(),
+                            context.user_agent.as_deref(),
+                            Some(serde_json::json!({
+                                "locked_until": locked_until,
+                                "failed_attempts": lockout_info.failed_attempts
+                            })),
+                            true,
+                        )
+                        .await;
+
+                    return Err(AuthError::AccountLocked {
+                        locked_until,
+                        remaining_seconds,
+                    });
+                }
+            }
+
             return Err(AuthError::InvalidCredentials);
         }
 
         // Check if user is active (Requirement 2.3)
         if !user.is_active {
+            let _ = self
+                .audit_service
+                .log_auth_event(
+                    Some(user.id),
+                    AuditAction::LoginFailed,
+                    context.ip_address.as_deref(),
+                    context.user_agent.as_deref(),
+                    Some(serde_json::json!({ "reason": "user_inactive" })),
+                    false,
+                )
+                .await;
             return Err(AuthError::UserInactive);
         }
 
         // Check if user is banned from the specified app (Requirement 3.4)
         if let Some(app_id) = app_id {
-            if let Some(user_app) = self.user_app_repo
+            if let Some(user_app) = self
+                .user_app_repo
                 .find(user.id, app_id)
                 .await
                 .map_err(|e| AuthError::InternalError(anyhow::anyhow!("{}", e)))?
             {
                 if user_app.status == crate::models::user_app::UserAppStatus::Banned {
+                    let _ = self
+                        .audit_service
+                        .log_auth_event(
+                            Some(user.id),
+                            AuditAction::LoginFailed,
+                            context.ip_address.as_deref(),
+                            context.user_agent.as_deref(),
+                            Some(serde_json::json!({
+                                "reason": "user_banned",
+                                "app_id": app_id
+                            })),
+                            false,
+                        )
+                        .await;
                     return Err(AuthError::UserBanned {
                         reason: user_app.banned_reason,
                     });
@@ -94,16 +318,272 @@ impl AuthService {
             }
         }
 
+        // Password verified - reset failed attempts
+        self.lockout_service.record_successful_login(user.id).await?;
+        let _ = self.rate_limiter.reset(&identifier, "login").await;
+
+        // Check if MFA is enabled for this user
+        if user.mfa_enabled {
+            let mfa_methods = self.mfa_repo.list_methods_by_user(user.id).await?;
+            let verified_methods: Vec<String> = mfa_methods
+                .iter()
+                .filter(|m| m.is_verified)
+                .map(|m| m.method_type.clone())
+                .collect();
+
+            if !verified_methods.is_empty() {
+                // Generate MFA token
+                let mfa_token = self.create_mfa_token(user.id, app_id).await?;
+
+                // Log MFA required
+                let _ = self
+                    .audit_service
+                    .log_auth_event(
+                        Some(user.id),
+                        AuditAction::Login,
+                        context.ip_address.as_deref(),
+                        context.user_agent.as_deref(),
+                        Some(serde_json::json!({
+                            "status": "mfa_required",
+                            "methods": verified_methods
+                        })),
+                        true,
+                    )
+                    .await;
+
+                return Ok(LoginResult::MfaRequired {
+                    mfa_token,
+                    user_id: user.id,
+                    available_methods: verified_methods,
+                });
+            }
+        }
+
+        // No MFA required - complete login
+        let (tokens, session_id) = self.complete_login(user.id, app_id, &context).await?;
+        Ok(LoginResult::Success { tokens, session_id })
+    }
+
+    /// Complete login after password verification (and MFA if required)
+    /// Returns (TokenPair, session_id)
+    async fn complete_login(
+        &self,
+        user_id: Uuid,
+        _app_id: Option<Uuid>,
+        context: &LoginContext,
+    ) -> Result<(TokenPair, Uuid), AuthError> {
         // Get user's apps, roles, and permissions for token payload
-        let apps = self.get_user_app_claims(user.id).await?;
+        let apps = self.get_user_app_claims(user_id).await?;
 
         // Generate token pair (Requirement 2.4, 2.5)
-        let token_pair = self.jwt_manager.create_token_pair(user.id, apps)?;
+        let token_pair = self.jwt_manager.create_token_pair(user_id, apps)?;
 
-        // Store refresh token hash in database
-        self.store_refresh_token(user.id, &token_pair.refresh_token).await?;
+        // Create session with device info
+        let device_info = DeviceInfo::new(
+            context.user_agent.as_ref().map(|ua| DeviceInfo::parse_device_name(ua)),
+            context.user_agent.as_ref().map(|ua| DeviceInfo::parse_device_type(ua)),
+            context.ip_address.clone(),
+            context.user_agent.clone(),
+        );
 
-        Ok(token_pair)
+        let session = self
+            .session_service
+            .create_session(user_id, &token_pair.refresh_token, Some(device_info))
+            .await?;
+
+        // Log successful login
+        let _ = self
+            .audit_service
+            .log_auth_event(
+                Some(user_id),
+                AuditAction::Login,
+                context.ip_address.as_deref(),
+                context.user_agent.as_deref(),
+                Some(serde_json::json!({ 
+                    "status": "completed",
+                    "session_id": session.id.to_string()
+                })),
+                true,
+            )
+            .await;
+
+        Ok((token_pair, session.id))
+    }
+
+    /// Create a temporary MFA token for 2-step login
+    async fn create_mfa_token(&self, user_id: Uuid, app_id: Option<Uuid>) -> Result<String, AuthError> {
+        let token = Uuid::new_v4().to_string();
+        let token_hash = hash_token(&token)?;
+        let expires_at = Utc::now() + Duration::minutes(MFA_TOKEN_EXPIRY_MINUTES);
+        let id = Uuid::new_v4();
+
+        // Store MFA token in a temporary table (reusing password_reset_tokens structure)
+        // In production, you might want a dedicated mfa_tokens table
+        sqlx::query(
+            r#"
+            INSERT INTO mfa_pending_tokens (id, user_id, token_hash, app_id, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id.to_string())
+        .bind(user_id.to_string())
+        .bind(&token_hash)
+        .bind(app_id.map(|id| id.to_string()))
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        Ok(token)
+    }
+
+    /// Verify MFA token and get associated data
+    async fn verify_mfa_token(&self, token: &str) -> Result<MfaTokenData, AuthError> {
+        let token_hash = hash_token(token)?;
+
+        let row = sqlx::query_as::<_, (String, Option<String>, chrono::DateTime<Utc>)>(
+            r#"
+            SELECT user_id, app_id, expires_at
+            FROM mfa_pending_tokens
+            WHERE token_hash = ? AND used = FALSE AND expires_at > NOW()
+            "#,
+        )
+        .bind(&token_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::InternalError(e.into()))?
+        .ok_or(AuthError::InvalidToken)?;
+
+        let user_id = Uuid::parse_str(&row.0)
+            .map_err(|e| AuthError::InternalError(e.into()))?;
+        let app_id = row.1.and_then(|s| Uuid::parse_str(&s).ok());
+
+        Ok(MfaTokenData {
+            user_id,
+            app_id,
+            expires_at: row.2,
+        })
+    }
+
+    /// Mark MFA token as used
+    async fn consume_mfa_token(&self, token: &str) -> Result<(), AuthError> {
+        let token_hash = hash_token(token)?;
+
+        sqlx::query(
+            r#"
+            UPDATE mfa_pending_tokens
+            SET used = TRUE
+            WHERE token_hash = ?
+            "#,
+        )
+        .bind(&token_hash)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AuthError::InternalError(e.into()))?;
+
+        Ok(())
+    }
+
+    /// Complete MFA login - verify code and return tokens
+    pub async fn complete_mfa_login(
+        &self,
+        mfa_token: &str,
+        code: &str,
+        is_backup_code: bool,
+        context: LoginContext,
+    ) -> Result<TokenPair, AuthError> {
+        // Verify MFA token
+        let mfa_data = self.verify_mfa_token(mfa_token).await?;
+
+        // Check rate limit for MFA verification
+        let identifier = format!("mfa:{}", mfa_data.user_id);
+        let rate_limit_config = RateLimitConfig::mfa_verify();
+        let rate_result = self
+            .rate_limiter
+            .check_and_increment(&identifier, "mfa_verify", &rate_limit_config)
+            .await?;
+
+        if !rate_result.allowed {
+            let _ = self
+                .audit_service
+                .log_mfa_event(
+                    mfa_data.user_id,
+                    AuditAction::MfaFailed,
+                    context.ip_address.as_deref(),
+                    context.user_agent.as_deref(),
+                    Some(serde_json::json!({ "reason": "rate_limited" })),
+                    false,
+                )
+                .await;
+
+            return Err(AuthError::RateLimitExceeded {
+                retry_after_seconds: rate_result.retry_after_seconds.unwrap_or(300),
+                limit: rate_result.max_requests,
+                remaining: rate_result.remaining,
+            });
+        }
+
+        // Verify the MFA code
+        let is_valid = if is_backup_code {
+            self.mfa_service.verify_backup_code(mfa_data.user_id, code).await?
+        } else {
+            self.mfa_service.verify_totp(mfa_data.user_id, code).await?
+        };
+
+        if !is_valid {
+            // Log failed MFA attempt
+            let _ = self
+                .audit_service
+                .log_mfa_event(
+                    mfa_data.user_id,
+                    AuditAction::MfaFailed,
+                    context.ip_address.as_deref(),
+                    context.user_agent.as_deref(),
+                    Some(serde_json::json!({
+                        "is_backup_code": is_backup_code
+                    })),
+                    false,
+                )
+                .await;
+
+            // Record MFA attempt for rate limiting
+            let _ = self
+                .mfa_service
+                .record_attempt(
+                    mfa_data.user_id,
+                    if is_backup_code { "backup" } else { "totp" },
+                    false,
+                    context.ip_address.as_deref(),
+                )
+                .await;
+
+            return Err(AuthError::InvalidMfaCode);
+        }
+
+        // MFA verified - consume the token
+        self.consume_mfa_token(mfa_token).await?;
+
+        // Reset MFA rate limit
+        let _ = self.rate_limiter.reset(&identifier, "mfa_verify").await;
+
+        // Log successful MFA
+        let _ = self
+            .audit_service
+            .log_mfa_event(
+                mfa_data.user_id,
+                AuditAction::MfaVerified,
+                context.ip_address.as_deref(),
+                context.user_agent.as_deref(),
+                Some(serde_json::json!({
+                    "is_backup_code": is_backup_code
+                })),
+                true,
+            )
+            .await;
+
+        // Complete login
+        let (tokens, _session_id) = self.complete_login(mfa_data.user_id, mfa_data.app_id, &context).await?;
+        Ok(tokens)
     }
 
     /// Get user's app claims (roles and permissions) for JWT token

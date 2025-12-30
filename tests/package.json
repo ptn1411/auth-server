@@ -1,0 +1,19 @@
+{
+  "name": "auth-server-tests",
+  "version": "1.0.0",
+  "description": "API tests for Auth Server",
+  "scripts": {
+    "test": "jest --runInBand --forceExit",
+    "test:watch": "jest --watch --runInBand",
+    "test:coverage": "jest --coverage --runInBand --forceExit",
+    "test:auth": "jest auth.test.js --runInBand --forceExit",
+    "test:admin": "jest admin.test.js --runInBand --forceExit",
+    "test:apps": "jest apps.test.js --runInBand --forceExit",
+    "test:security": "jest security.test.js --runInBand --forceExit"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3"
+  }
+}
