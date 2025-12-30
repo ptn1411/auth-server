@@ -1,13 +1,27 @@
-use chrono::{DateTime, Duration, Utc};
 use sqlx::MySqlPool;
 use uuid::Uuid;
+use chrono::{Utc, Duration};
 
-use crate::error::AuthError;
+use crate::error::AppError;
 
-/// Repository for rate limiting database operations
 #[derive(Clone)]
 pub struct RateLimitRepository {
     pool: MySqlPool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RateLimitConfig {
+    pub max_requests: i32,
+    pub window_seconds: i64,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_requests: 100,
+            window_seconds: 60,
+        }
+    }
 }
 
 impl RateLimitRepository {
@@ -15,162 +29,143 @@ impl RateLimitRepository {
         Self { pool }
     }
 
-    /// Increment request count for an identifier/endpoint combination
-    /// Returns the current count after increment
-    pub async fn increment(
+    /// Check if request is allowed and increment counter
+    /// Returns (allowed, remaining, reset_at)
+    pub async fn check_and_increment(
         &self,
         identifier: &str,
         endpoint: &str,
-        window_seconds: i64,
-    ) -> Result<i32, AuthError> {
-        let id = Uuid::new_v4();
-        let window_start = Utc::now() - Duration::seconds(window_seconds);
+        config: &RateLimitConfig,
+    ) -> Result<(bool, i32, i64), AppError> {
+        let window_start = Utc::now() - Duration::seconds(config.window_seconds);
+        
+        // Clean old entries
+        sqlx::query("DELETE FROM rate_limits WHERE window_start < ?")
+            .bind(window_start)
+            .execute(&self.pool)
+            .await?;
 
-        // First, try to update existing entry within the window
-        let result = sqlx::query(
+        // Get current count
+        let count: Option<(i32,)> = sqlx::query_as(
             r#"
-            UPDATE rate_limit_entries
-            SET request_count = request_count + 1
-            WHERE identifier = ? AND endpoint = ? AND window_start > ?
+            SELECT COALESCE(SUM(request_count), 0) as count
+            FROM rate_limits 
+            WHERE identifier = ? AND endpoint = ? AND window_start >= ?
             "#,
         )
         .bind(identifier)
         .bind(endpoint)
         .bind(window_start)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
+        .fetch_optional(&self.pool)
+        .await?;
 
-        if result.rows_affected() > 0 {
-            // Entry was updated, get the new count
-            let count = sqlx::query_scalar::<_, i32>(
-                r#"
-                SELECT request_count
-                FROM rate_limit_entries
-                WHERE identifier = ? AND endpoint = ? AND window_start > ?
-                "#,
-            )
-            .bind(identifier)
-            .bind(endpoint)
-            .bind(window_start)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| AuthError::InternalError(e.into()))?;
+        let current_count = count.map(|c| c.0).unwrap_or(0);
+        let remaining = config.max_requests - current_count - 1;
+        let reset_at = (Utc::now() + Duration::seconds(config.window_seconds)).timestamp();
 
-            return Ok(count);
+        if current_count >= config.max_requests {
+            return Ok((false, 0, reset_at));
         }
 
-        // No existing entry or entry is outside window, create new one
-        // First delete old entries for this identifier/endpoint
+        // Increment counter
+        let id = Uuid::new_v4();
         sqlx::query(
             r#"
-            DELETE FROM rate_limit_entries
-            WHERE identifier = ? AND endpoint = ?
-            "#,
-        )
-        .bind(identifier)
-        .bind(endpoint)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
-
-        // Insert new entry
-        sqlx::query(
-            r#"
-            INSERT INTO rate_limit_entries (id, identifier, endpoint, request_count, window_start)
+            INSERT INTO rate_limits (id, identifier, endpoint, request_count, window_start)
             VALUES (?, ?, ?, 1, NOW())
+            ON DUPLICATE KEY UPDATE request_count = request_count + 1
             "#,
         )
-        .bind(id.to_string())
+        .bind(id)
         .bind(identifier)
         .bind(endpoint)
         .execute(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
+        .await?;
 
-        Ok(1)
+        Ok((true, remaining.max(0), reset_at))
     }
 
-    /// Get current request count for an identifier/endpoint
-    pub async fn get_count(
+    /// Get current rate limit status without incrementing
+    pub async fn get_status(
         &self,
         identifier: &str,
         endpoint: &str,
-        window_seconds: i64,
-    ) -> Result<i32, AuthError> {
-        let window_start = Utc::now() - Duration::seconds(window_seconds);
+        config: &RateLimitConfig,
+    ) -> Result<(i32, i32, i64), AppError> {
+        let window_start = Utc::now() - Duration::seconds(config.window_seconds);
 
-        let count = sqlx::query_scalar::<_, i32>(
+        let count: Option<(i32,)> = sqlx::query_as(
             r#"
-            SELECT COALESCE(request_count, 0)
-            FROM rate_limit_entries
-            WHERE identifier = ? AND endpoint = ? AND window_start > ?
+            SELECT COALESCE(SUM(request_count), 0) as count
+            FROM rate_limits 
+            WHERE identifier = ? AND endpoint = ? AND window_start >= ?
             "#,
         )
         .bind(identifier)
         .bind(endpoint)
         .bind(window_start)
         .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
+        .await?;
 
-        Ok(count.unwrap_or(0))
+        let current_count = count.map(|c| c.0).unwrap_or(0);
+        let remaining = (config.max_requests - current_count).max(0);
+        let reset_at = (Utc::now() + Duration::seconds(config.window_seconds)).timestamp();
+
+        Ok((current_count, remaining, reset_at))
     }
 
-    /// Reset rate limit for an identifier/endpoint
-    pub async fn reset(&self, identifier: &str, endpoint: &str) -> Result<(), AuthError> {
-        sqlx::query(
-            r#"
-            DELETE FROM rate_limit_entries
-            WHERE identifier = ? AND endpoint = ?
-            "#,
-        )
-        .bind(identifier)
-        .bind(endpoint)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
-
+    /// Reset rate limit for identifier
+    pub async fn reset(&self, identifier: &str, endpoint: Option<&str>) -> Result<(), AppError> {
+        if let Some(endpoint) = endpoint {
+            sqlx::query("DELETE FROM rate_limits WHERE identifier = ? AND endpoint = ?")
+                .bind(identifier)
+                .bind(endpoint)
+                .execute(&self.pool)
+                .await?;
+        } else {
+            sqlx::query("DELETE FROM rate_limits WHERE identifier = ?")
+                .bind(identifier)
+                .execute(&self.pool)
+                .await?;
+        }
         Ok(())
     }
+}
 
-    /// Get window start time for an identifier/endpoint
-    pub async fn get_window_start(
-        &self,
-        identifier: &str,
-        endpoint: &str,
-    ) -> Result<Option<DateTime<Utc>>, AuthError> {
-        let window_start = sqlx::query_scalar::<_, DateTime<Utc>>(
-            r#"
-            SELECT window_start
-            FROM rate_limit_entries
-            WHERE identifier = ? AND endpoint = ?
-            "#,
-        )
-        .bind(identifier)
-        .bind(endpoint)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
-
-        Ok(window_start)
+// Predefined rate limit configs
+impl RateLimitConfig {
+    pub fn login() -> Self {
+        Self {
+            max_requests: 5,
+            window_seconds: 60,
+        }
     }
 
-    /// Delete old rate limit entries (cleanup)
-    pub async fn delete_expired(&self, window_seconds: i64) -> Result<u64, AuthError> {
-        let window_start = Utc::now() - Duration::seconds(window_seconds);
+    pub fn register() -> Self {
+        Self {
+            max_requests: 3,
+            window_seconds: 60,
+        }
+    }
 
-        let result = sqlx::query(
-            r#"
-            DELETE FROM rate_limit_entries
-            WHERE window_start < ?
-            "#,
-        )
-        .bind(window_start)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AuthError::InternalError(e.into()))?;
+    pub fn password_reset() -> Self {
+        Self {
+            max_requests: 3,
+            window_seconds: 300,
+        }
+    }
 
-        Ok(result.rows_affected())
+    pub fn api() -> Self {
+        Self {
+            max_requests: 1000,
+            window_seconds: 60,
+        }
+    }
+
+    pub fn strict() -> Self {
+        Self {
+            max_requests: 10,
+            window_seconds: 60,
+        }
     }
 }

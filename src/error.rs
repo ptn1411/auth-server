@@ -8,6 +8,8 @@ use serde::Serialize;
 #[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
+    #[error("Not system admin")]
+    NotSystemAdmin,
     #[error("Invalid credentials")]
     InvalidCredentials,
 
@@ -73,8 +75,8 @@ pub enum AuthError {
 #[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("App not found")]
-    NotFound,
+    #[error("Not found: {0}")]
+    NotFound(String),
 
     #[error("App code already exists")]
     CodeAlreadyExists,
@@ -84,6 +86,15 @@ pub enum AppError {
 
     #[error("Not app owner")]
     NotAppOwner,
+
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+
+    #[error("Authentication error")]
+    Auth(#[from] AuthError),
+
+    #[error("Database error")]
+    Database(#[from] sqlx::Error),
 
     #[error("Internal server error")]
     InternalError(#[from] anyhow::Error),
@@ -138,6 +149,7 @@ pub struct ErrorResponse {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, error_type) = match &self {
+            AuthError::NotSystemAdmin => (StatusCode::FORBIDDEN, "not_system_admin"),
             AuthError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
             AuthError::UserNotFound => (StatusCode::NOT_FOUND, "user_not_found"),
             AuthError::UserInactive => (StatusCode::FORBIDDEN, "user_inactive"),
@@ -173,10 +185,13 @@ impl IntoResponse for AuthError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_type) = match &self {
-            AppError::NotFound => (StatusCode::NOT_FOUND, "app_not_found"),
+            AppError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             AppError::CodeAlreadyExists => (StatusCode::CONFLICT, "app_code_exists"),
             AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
             AppError::NotAppOwner => (StatusCode::FORBIDDEN, "not_app_owner"),
+            AppError::ValidationError(_) => (StatusCode::BAD_REQUEST, "validation_error"),
+            AppError::Auth(_) => (StatusCode::FORBIDDEN, "auth_error"),
+            AppError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "database_error"),
             AppError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         };
 

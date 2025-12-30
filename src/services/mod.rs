@@ -14,6 +14,10 @@ pub mod session;
 pub mod token_revocation;
 pub mod mfa;
 pub mod account_lockout;
+pub mod webhook;
+pub mod api_key;
+pub mod ip_rule;
+pub mod webauthn;
 
 pub use admin::AdminService;
 pub use app::AppService;
@@ -31,3 +35,7 @@ pub use session::{DeviceInfo, SessionService};
 pub use token_revocation::TokenRevocationService;
 pub use mfa::{MfaService, TotpSetupResponse};
 pub use account_lockout::{AccountLockoutService, LockoutConfig, LockoutInfo};
+pub use webhook::WebhookService;
+pub use api_key::{ApiKeyService, scopes as api_key_scopes};
+pub use ip_rule::{IpRuleService, IpAccessResult};
+pub use webauthn::{WebAuthnService, RegistrationResponse, AuthenticationResponse, AuthenticatorAttestationResponse, AuthenticatorAssertionResponse};

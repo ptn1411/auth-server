@@ -1,7 +1,8 @@
 use sqlx::MySqlPool;
 
-use crate::error::AuthError;
+use crate::error::AppError;
 use crate::repositories::RateLimitRepository;
+use crate::repositories::rate_limit::RateLimitConfig as RepoRateLimitConfig;
 
 /// Rate limit configuration for different endpoints
 #[derive(Debug, Clone)]
@@ -68,6 +69,13 @@ impl RateLimitConfig {
             window_seconds: 60,
         }
     }
+
+    fn to_repo_config(&self) -> RepoRateLimitConfig {
+        RepoRateLimitConfig {
+            max_requests: self.max_requests,
+            window_seconds: self.window_seconds,
+        }
+    }
 }
 
 /// Result of a rate limit check
@@ -100,35 +108,24 @@ impl RateLimiterService {
         identifier: &str,
         endpoint: &str,
         config: &RateLimitConfig,
-    ) -> Result<RateLimitResult, AuthError> {
-        let count = self
+    ) -> Result<RateLimitResult, AppError> {
+        let repo_config = config.to_repo_config();
+        let (allowed, remaining, reset_at) = self
             .repo
-            .increment(identifier, endpoint, config.window_seconds)
+            .check_and_increment(identifier, endpoint, &repo_config)
             .await?;
 
-        let allowed = count <= config.max_requests;
-        let remaining = (config.max_requests - count).max(0);
-
+        let current_count = config.max_requests - remaining - if allowed { 1 } else { 0 };
         let retry_after = if !allowed {
-            // Get window start to calculate retry time
-            if let Some(window_start) = self.repo.get_window_start(identifier, endpoint).await? {
-                let window_end = window_start + chrono::Duration::seconds(config.window_seconds);
-                let now = chrono::Utc::now();
-                if window_end > now {
-                    Some((window_end - now).num_seconds())
-                } else {
-                    Some(0)
-                }
-            } else {
-                Some(config.window_seconds)
-            }
+            let now = chrono::Utc::now().timestamp();
+            Some((reset_at - now).max(0))
         } else {
             None
         };
 
         Ok(RateLimitResult {
             allowed,
-            current_count: count,
+            current_count,
             max_requests: config.max_requests,
             remaining,
             retry_after_seconds: retry_after,
@@ -141,18 +138,18 @@ impl RateLimiterService {
         identifier: &str,
         endpoint: &str,
         config: &RateLimitConfig,
-    ) -> Result<RateLimitResult, AuthError> {
-        let count = self
+    ) -> Result<RateLimitResult, AppError> {
+        let repo_config = config.to_repo_config();
+        let (current_count, remaining, _reset_at) = self
             .repo
-            .get_count(identifier, endpoint, config.window_seconds)
+            .get_status(identifier, endpoint, &repo_config)
             .await?;
 
-        let allowed = count < config.max_requests;
-        let remaining = (config.max_requests - count).max(0);
+        let allowed = current_count < config.max_requests;
 
         Ok(RateLimitResult {
             allowed,
-            current_count: count,
+            current_count,
             max_requests: config.max_requests,
             remaining,
             retry_after_seconds: None,
@@ -160,8 +157,8 @@ impl RateLimiterService {
     }
 
     /// Reset rate limit for an identifier
-    pub async fn reset(&self, identifier: &str, endpoint: &str) -> Result<(), AuthError> {
-        self.repo.reset(identifier, endpoint).await
+    pub async fn reset(&self, identifier: &str, endpoint: &str) -> Result<(), AppError> {
+        self.repo.reset(identifier, Some(endpoint)).await
     }
 
     /// Create a combined identifier from IP and email
@@ -172,10 +169,5 @@ impl RateLimiterService {
             (None, Some(email)) => email.to_string(),
             (None, None) => "unknown".to_string(),
         }
-    }
-
-    /// Cleanup expired rate limit entries
-    pub async fn cleanup(&self, window_seconds: i64) -> Result<u64, AuthError> {
-        self.repo.delete_expired(window_seconds).await
     }
 }

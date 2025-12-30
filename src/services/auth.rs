@@ -137,7 +137,8 @@ impl AuthService {
         let rate_result = self
             .rate_limiter
             .check_and_increment(&identifier, "login", &rate_limit_config)
-            .await?;
+            .await
+            .map_err(|e| AuthError::InternalError(anyhow::anyhow!("{}", e)))?;
 
         if !rate_result.allowed {
             // Log rate limit event
@@ -501,7 +502,8 @@ impl AuthService {
         let rate_result = self
             .rate_limiter
             .check_and_increment(&identifier, "mfa_verify", &rate_limit_config)
-            .await?;
+            .await
+            .map_err(|e| AuthError::InternalError(anyhow::anyhow!("{}", e)))?;
 
         if !rate_result.allowed {
             let _ = self

@@ -243,7 +243,7 @@ impl AppRepository {
         .map_err(|e| AppError::InternalError(e.into()))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound);
+            return Err(AppError::NotFound("App not found".into()));
         }
 
         Ok(())
@@ -280,7 +280,7 @@ impl AppRepository {
         }
 
         if updates.is_empty() {
-            return self.find_by_id(app_id).await?.ok_or(AppError::NotFound);
+            return self.find_by_id(app_id).await?.ok_or(AppError::NotFound("App not found".into()));
         }
 
         let query = format!(
@@ -303,10 +303,10 @@ impl AppRepository {
             .map_err(|e| AppError::InternalError(e.into()))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound);
+            return Err(AppError::NotFound("App not found".into()));
         }
 
-        self.find_by_id(app_id).await?.ok_or(AppError::NotFound)
+        self.find_by_id(app_id).await?.ok_or(AppError::NotFound("App not found".into()))
     }
 
     /// Delete an app
@@ -318,7 +318,7 @@ impl AppRepository {
             .map_err(|e| AppError::InternalError(e.into()))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound);
+            return Err(AppError::NotFound("App not found".into()));
         }
 
         Ok(())

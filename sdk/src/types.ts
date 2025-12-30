@@ -307,3 +307,176 @@ export interface ConnectedApp {
 export interface ConnectedAppsResponse {
   apps: ConnectedApp[];
 }
+
+
+// ============ Webhook Types ============
+
+export interface CreateWebhookRequest {
+  url: string;
+  events: string[];
+}
+
+export interface UpdateWebhookRequest {
+  url?: string;
+  events?: string[];
+  is_active?: boolean;
+}
+
+export interface WebhookResponse {
+  id: string;
+  app_id: string;
+  url: string;
+  events: string[];
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface WebhookWithSecretResponse extends WebhookResponse {
+  secret: string;
+}
+
+// ============ API Key Types ============
+
+export interface CreateApiKeyRequest {
+  name: string;
+  scopes?: string[];
+  expires_at?: string;
+}
+
+export interface UpdateApiKeyRequest {
+  name?: string;
+  scopes?: string[];
+  is_active?: boolean;
+}
+
+export interface ApiKeyResponse {
+  id: string;
+  app_id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  expires_at?: string;
+  last_used_at?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ApiKeyWithSecretResponse extends ApiKeyResponse {
+  key: string;
+}
+
+// ============ IP Rule Types ============
+
+export interface CreateIpRuleRequest {
+  ip_address: string;
+  ip_range?: string;
+  rule_type: 'whitelist' | 'blacklist';
+  reason?: string;
+  expires_at?: string;
+}
+
+export interface IpRuleResponse {
+  id: string;
+  app_id?: string;
+  ip_address: string;
+  ip_range?: string;
+  rule_type: string;
+  reason?: string;
+  expires_at?: string;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface IpCheckResponse {
+  ip: string;
+  allowed: boolean;
+  rule_type?: string;
+}
+
+// ============ WebAuthn/Passkey Types ============
+
+export interface StartRegistrationRequest {
+  device_name?: string;
+}
+
+export interface RegistrationOptionsResponse {
+  challenge: string;
+  rp: {
+    id: string;
+    name: string;
+  };
+  user: {
+    id: string;
+    name: string;
+    display_name: string;
+  };
+  pub_key_cred_params: Array<{
+    type: string;
+    alg: number;
+  }>;
+  timeout: number;
+  attestation: string;
+  authenticator_selection: {
+    authenticator_attachment?: string;
+    resident_key: string;
+    user_verification: string;
+  };
+}
+
+export interface FinishRegistrationRequest {
+  id: string;
+  raw_id: string;
+  response: {
+    client_data_json: string;
+    attestation_object: string;
+  };
+  type: string;
+  device_name?: string;
+}
+
+export interface StartAuthenticationRequest {
+  email?: string;
+}
+
+export interface AuthenticationOptionsResponse {
+  challenge: string;
+  timeout: number;
+  rp_id: string;
+  allow_credentials: Array<{
+    id: string;
+    type: string;
+    transports?: string[];
+  }>;
+  user_verification: string;
+}
+
+export interface FinishAuthenticationRequest {
+  id: string;
+  raw_id: string;
+  response: {
+    client_data_json: string;
+    authenticator_data: string;
+    signature: string;
+    user_handle?: string;
+  };
+  type: string;
+}
+
+export interface PasskeyResponse {
+  id: string;
+  device_name?: string;
+  transports?: string[];
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface PasskeyAuthResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export interface RenameCredentialRequest {
+  name: string;
+}

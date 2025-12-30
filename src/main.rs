@@ -64,6 +64,23 @@ use crate::handlers::{
         regenerate_backup_codes_handler, revoke_other_sessions_handler, revoke_session_handler,
         setup_totp_handler, unlock_account_handler, verify_totp_setup_handler,
     },
+    webhook::{
+        create_webhook_handler, list_webhooks_handler, get_webhook_handler,
+        update_webhook_handler, delete_webhook_handler,
+    },
+    api_key::{
+        create_api_key_handler, list_api_keys_handler, get_api_key_handler,
+        update_api_key_handler, delete_api_key_handler, revoke_api_key_handler,
+    },
+    ip_rule::{
+        create_ip_rule_handler, create_app_ip_rule_handler, list_ip_rules_handler,
+        list_app_ip_rules_handler, check_ip_handler, delete_ip_rule_handler,
+    },
+    webauthn::{
+        start_registration_handler, finish_registration_handler,
+        start_authentication_handler, finish_authentication_handler,
+        list_credentials_handler, rename_credential_handler, delete_credential_handler,
+    },
 };
 use crate::middleware::{app_auth_middleware, jwt_auth_middleware, oauth_auth_middleware};
 
@@ -170,7 +187,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/verify-email", post(verify_email_handler))
         .route("/resend-verification", post(resend_verification_handler))
         // MFA login completion - public (uses mfa_token for auth)
-        .route("/mfa/verify", post(complete_mfa_login_handler));
+        .route("/mfa/verify", post(complete_mfa_login_handler))
+        // WebAuthn public routes
+        .route("/webauthn/authenticate/start", post(start_authentication_handler))
+        .route("/webauthn/authenticate/finish", post(finish_authentication_handler));
 
     // Protected auth routes - JWT authentication required
     let protected_auth_routes = Router::new()
@@ -184,6 +204,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/mfa", delete(disable_mfa_handler))
         .route("/mfa/backup-codes/regenerate", post(regenerate_backup_codes_handler))
         .route("/audit-logs", get(get_audit_logs_handler))
+        // WebAuthn protected routes
+        .route("/webauthn/register/start", post(start_registration_handler))
+        .route("/webauthn/register/finish", post(finish_registration_handler))
+        .route("/webauthn/credentials", get(list_credentials_handler))
+        .route("/webauthn/credentials/:credential_id", put(rename_credential_handler))
+        .route("/webauthn/credentials/:credential_id", delete(delete_credential_handler))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             jwt_auth_middleware,
@@ -249,6 +275,22 @@ pub fn create_router(state: AppState) -> Router {
         .route("/apps/:app_id/users/:user_id/unban", post(unban_user_handler))
         .route("/apps/:app_id/users/:user_id", delete(remove_user_handler))
         .route("/apps/:app_id/users", get(list_app_users_handler))
+        // Webhook routes
+        .route("/apps/:app_id/webhooks", post(create_webhook_handler))
+        .route("/apps/:app_id/webhooks", get(list_webhooks_handler))
+        .route("/apps/:app_id/webhooks/:webhook_id", get(get_webhook_handler))
+        .route("/apps/:app_id/webhooks/:webhook_id", put(update_webhook_handler))
+        .route("/apps/:app_id/webhooks/:webhook_id", delete(delete_webhook_handler))
+        // API Key routes
+        .route("/apps/:app_id/api-keys", post(create_api_key_handler))
+        .route("/apps/:app_id/api-keys", get(list_api_keys_handler))
+        .route("/apps/:app_id/api-keys/:key_id", get(get_api_key_handler))
+        .route("/apps/:app_id/api-keys/:key_id", put(update_api_key_handler))
+        .route("/apps/:app_id/api-keys/:key_id", delete(delete_api_key_handler))
+        .route("/apps/:app_id/api-keys/:key_id/revoke", post(revoke_api_key_handler))
+        // App IP rules
+        .route("/apps/:app_id/ip-rules", post(create_app_ip_rule_handler))
+        .route("/apps/:app_id/ip-rules", get(list_app_ip_rules_handler))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             jwt_auth_middleware,
@@ -289,6 +331,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/apps/:app_id", delete(delete_app_handler))
         // Audit logs
         .route("/audit-logs", get(get_all_audit_logs_handler))
+        // Global IP rules (admin only)
+        .route("/ip-rules", post(create_ip_rule_handler))
+        .route("/ip-rules", get(list_ip_rules_handler))
+        .route("/ip-rules/check", get(check_ip_handler))
+        .route("/ip-rules/:rule_id", delete(delete_ip_rule_handler))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             jwt_auth_middleware,

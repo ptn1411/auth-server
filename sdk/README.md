@@ -309,3 +309,178 @@ new AuthServerClient(config: AuthServerConfig)
 ## License
 
 MIT
+
+
+## Advanced Features
+
+### Webhooks
+
+```typescript
+// Create webhook
+const webhook = await client.createWebhook(appId, {
+  url: 'https://example.com/webhook',
+  events: ['user.login', 'user.register', 'user.logout'],
+});
+console.log('Webhook Secret:', webhook.secret);
+
+// List webhooks
+const webhooks = await client.listWebhooks(appId);
+
+// Get webhook
+const wh = await client.getWebhook(appId, webhookId);
+
+// Update webhook
+await client.updateWebhook(appId, webhookId, {
+  events: ['user.login'],
+  is_active: false,
+});
+
+// Delete webhook
+await client.deleteWebhook(appId, webhookId);
+```
+
+### API Keys (Server-to-Server)
+
+```typescript
+// Create API key
+const apiKey = await client.createApiKey(appId, {
+  name: 'Production Key',
+  scopes: ['read:users', 'write:users'],
+  expires_at: '2025-12-31T23:59:59Z', // optional
+});
+console.log('API Key:', apiKey.key); // Only shown once!
+
+// List API keys
+const keys = await client.listApiKeys(appId);
+
+// Get API key
+const key = await client.getApiKey(appId, keyId);
+
+// Update API key
+await client.updateApiKey(appId, keyId, {
+  name: 'Updated Name',
+  scopes: ['read:users'],
+});
+
+// Revoke API key
+await client.revokeApiKey(appId, keyId);
+
+// Delete API key
+await client.deleteApiKey(appId, keyId);
+```
+
+### IP Rules (Whitelist/Blacklist)
+
+```typescript
+// App-level IP rules
+const rule = await client.createAppIpRule(appId, {
+  ip_address: '192.168.1.100',
+  rule_type: 'whitelist',
+  reason: 'Office IP',
+});
+
+const appRules = await client.listAppIpRules(appId);
+
+// Admin global IP rules
+const globalRule = await client.adminCreateIpRule({
+  ip_address: '10.0.0.0',
+  ip_range: '10.0.0.0/8',
+  rule_type: 'blacklist',
+  reason: 'Suspicious network',
+});
+
+const globalRules = await client.adminListIpRules();
+
+// Check IP access
+const check = await client.adminCheckIp('192.168.1.100');
+console.log('Allowed:', check.allowed);
+
+// Delete rule
+await client.adminDeleteIpRule(ruleId);
+```
+
+### WebAuthn/Passkeys
+
+```typescript
+// Start passkey registration (requires browser WebAuthn API)
+const regOptions = await client.startPasskeyRegistration({
+  device_name: 'My MacBook',
+});
+
+// After browser creates credential:
+const passkey = await client.finishPasskeyRegistration({
+  id: credential.id,
+  raw_id: btoa(credential.rawId),
+  response: {
+    client_data_json: btoa(credential.response.clientDataJSON),
+    attestation_object: btoa(credential.response.attestationObject),
+  },
+  type: 'public-key',
+  device_name: 'My MacBook',
+});
+
+// Start passkey authentication
+const authOptions = await client.startPasskeyAuthentication({
+  email: 'user@example.com', // optional hint
+});
+
+// After browser gets assertion:
+const tokens = await client.finishPasskeyAuthentication({
+  id: assertion.id,
+  raw_id: btoa(assertion.rawId),
+  response: {
+    client_data_json: btoa(assertion.response.clientDataJSON),
+    authenticator_data: btoa(assertion.response.authenticatorData),
+    signature: btoa(assertion.response.signature),
+    user_handle: assertion.response.userHandle ? btoa(assertion.response.userHandle) : undefined,
+  },
+  type: 'public-key',
+});
+
+// List passkeys
+const passkeys = await client.listPasskeys();
+
+// Rename passkey
+await client.renamePasskey(credentialId, { name: 'Work Laptop' });
+
+// Delete passkey
+await client.deletePasskey(credentialId);
+```
+
+### API Reference (Advanced Features)
+
+#### Webhooks
+
+- `createWebhook(appId, data)`: Create webhook
+- `listWebhooks(appId)`: List webhooks
+- `getWebhook(appId, webhookId)`: Get webhook
+- `updateWebhook(appId, webhookId, data)`: Update webhook
+- `deleteWebhook(appId, webhookId)`: Delete webhook
+
+#### API Keys
+
+- `createApiKey(appId, data)`: Create API key
+- `listApiKeys(appId)`: List API keys
+- `getApiKey(appId, keyId)`: Get API key
+- `updateApiKey(appId, keyId, data)`: Update API key
+- `revokeApiKey(appId, keyId)`: Revoke API key
+- `deleteApiKey(appId, keyId)`: Delete API key
+
+#### IP Rules
+
+- `createAppIpRule(appId, data)`: Create app IP rule
+- `listAppIpRules(appId)`: List app IP rules
+- `adminCreateIpRule(data)`: Create global IP rule
+- `adminListIpRules()`: List global IP rules
+- `adminCheckIp(ip, appId?)`: Check IP access
+- `adminDeleteIpRule(ruleId)`: Delete IP rule
+
+#### WebAuthn/Passkeys
+
+- `startPasskeyRegistration(data?)`: Start registration
+- `finishPasskeyRegistration(data)`: Complete registration
+- `startPasskeyAuthentication(data?)`: Start authentication
+- `finishPasskeyAuthentication(data)`: Complete authentication
+- `listPasskeys()`: List user passkeys
+- `renamePasskey(credentialId, data)`: Rename passkey
+- `deletePasskey(credentialId)`: Delete passkey

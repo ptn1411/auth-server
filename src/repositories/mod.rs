@@ -16,6 +16,10 @@ pub mod session;
 pub mod revoked_token;
 pub mod rate_limit;
 pub mod mfa;
+pub mod webhook;
+pub mod api_key;
+pub mod ip_rule;
+pub mod webauthn;
 
 pub use app::AppRepository;
 pub use authorization_code::AuthorizationCodeRepository;
@@ -35,3 +39,7 @@ pub use session::SessionRepository;
 pub use revoked_token::RevokedTokenRepository;
 pub use rate_limit::RateLimitRepository;
 pub use mfa::MfaRepository;
+pub use webhook::WebhookRepository;
+pub use api_key::ApiKeyRepository;
+pub use ip_rule::IpRuleRepository;
+pub use webauthn::WebAuthnRepository;

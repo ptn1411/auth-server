@@ -10,6 +10,10 @@ pub mod authorization_code;
 pub mod oauth_token;
 pub mod oauth_audit_log;
 pub mod security;
+pub mod webhook;
+pub mod api_key;
+pub mod ip_rule;
+pub mod webauthn;
 
 pub use user::*;
 pub use app::*;
@@ -23,3 +27,7 @@ pub use authorization_code::*;
 pub use oauth_token::*;
 pub use oauth_audit_log::*;
 pub use security::*;
+pub use webhook::*;
+pub use api_key::*;
+pub use ip_rule::*;
+pub use webauthn::*;

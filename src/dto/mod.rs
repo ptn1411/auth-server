@@ -5,6 +5,10 @@ pub mod role;
 pub mod permission;
 pub mod user_management;
 pub mod security;
+pub mod webhook;
+pub mod api_key;
+pub mod ip_rule;
+pub mod webauthn;
 
 pub use auth::*;
 pub use app::*;
@@ -13,3 +17,7 @@ pub use role::*;
 pub use permission::*;
 pub use user_management::*;
 pub use security::*;
+pub use webhook::*;
+pub use api_key::*;
+pub use ip_rule::*;
+pub use webauthn::*;

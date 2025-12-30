@@ -430,4 +430,112 @@ export class AuthServerClient {
   async adminBulkAssignRole(userIds: string[], roleId: string): Promise<{ assigned: number }> {
     return this.post('/admin/users/bulk-assign-role', { user_ids: userIds, role_id: roleId });
   }
+
+  // ============ Webhook API ============
+
+  async createWebhook(appId: string, data: import('./types').CreateWebhookRequest): Promise<import('./types').WebhookWithSecretResponse> {
+    return this.post(`/apps/${appId}/webhooks`, data);
+  }
+
+  async listWebhooks(appId: string): Promise<import('./types').WebhookResponse[]> {
+    return this.get(`/apps/${appId}/webhooks`);
+  }
+
+  async getWebhook(appId: string, webhookId: string): Promise<import('./types').WebhookResponse> {
+    return this.get(`/apps/${appId}/webhooks/${webhookId}`);
+  }
+
+  async updateWebhook(appId: string, webhookId: string, data: import('./types').UpdateWebhookRequest): Promise<import('./types').WebhookResponse> {
+    return this.put(`/apps/${appId}/webhooks/${webhookId}`, data);
+  }
+
+  async deleteWebhook(appId: string, webhookId: string): Promise<void> {
+    return this.delete(`/apps/${appId}/webhooks/${webhookId}`);
+  }
+
+  // ============ API Key API ============
+
+  async createApiKey(appId: string, data: import('./types').CreateApiKeyRequest): Promise<import('./types').ApiKeyWithSecretResponse> {
+    return this.post(`/apps/${appId}/api-keys`, data);
+  }
+
+  async listApiKeys(appId: string): Promise<import('./types').ApiKeyResponse[]> {
+    return this.get(`/apps/${appId}/api-keys`);
+  }
+
+  async getApiKey(appId: string, keyId: string): Promise<import('./types').ApiKeyResponse> {
+    return this.get(`/apps/${appId}/api-keys/${keyId}`);
+  }
+
+  async updateApiKey(appId: string, keyId: string, data: import('./types').UpdateApiKeyRequest): Promise<import('./types').ApiKeyResponse> {
+    return this.put(`/apps/${appId}/api-keys/${keyId}`, data);
+  }
+
+  async deleteApiKey(appId: string, keyId: string): Promise<void> {
+    return this.delete(`/apps/${appId}/api-keys/${keyId}`);
+  }
+
+  async revokeApiKey(appId: string, keyId: string): Promise<void> {
+    return this.post(`/apps/${appId}/api-keys/${keyId}/revoke`);
+  }
+
+  // ============ IP Rules API ============
+
+  async createAppIpRule(appId: string, data: import('./types').CreateIpRuleRequest): Promise<import('./types').IpRuleResponse> {
+    return this.post(`/apps/${appId}/ip-rules`, data);
+  }
+
+  async listAppIpRules(appId: string): Promise<import('./types').IpRuleResponse[]> {
+    return this.get(`/apps/${appId}/ip-rules`);
+  }
+
+  async adminCreateIpRule(data: import('./types').CreateIpRuleRequest): Promise<import('./types').IpRuleResponse> {
+    return this.post('/admin/ip-rules', data);
+  }
+
+  async adminListIpRules(): Promise<import('./types').IpRuleResponse[]> {
+    return this.get('/admin/ip-rules');
+  }
+
+  async adminCheckIp(ip: string, appId?: string): Promise<import('./types').IpCheckResponse> {
+    return this.get('/admin/ip-rules/check', { ip, app_id: appId });
+  }
+
+  async adminDeleteIpRule(ruleId: string): Promise<void> {
+    return this.delete(`/admin/ip-rules/${ruleId}`);
+  }
+
+  // ============ WebAuthn/Passkey API ============
+
+  async startPasskeyRegistration(data?: import('./types').StartRegistrationRequest): Promise<import('./types').RegistrationOptionsResponse> {
+    return this.post('/auth/webauthn/register/start', data || {});
+  }
+
+  async finishPasskeyRegistration(data: import('./types').FinishRegistrationRequest): Promise<import('./types').PasskeyResponse> {
+    return this.post('/auth/webauthn/register/finish', data);
+  }
+
+  async startPasskeyAuthentication(data?: import('./types').StartAuthenticationRequest): Promise<import('./types').AuthenticationOptionsResponse> {
+    return this.request('POST', '/auth/webauthn/authenticate/start', { body: data || {}, auth: false });
+  }
+
+  async finishPasskeyAuthentication(data: import('./types').FinishAuthenticationRequest): Promise<import('./types').PasskeyAuthResponse> {
+    const response = await this.request<import('./types').PasskeyAuthResponse>(
+      'POST', '/auth/webauthn/authenticate/finish', { body: data, auth: false }
+    );
+    this.setTokens(response.access_token, response.refresh_token);
+    return response;
+  }
+
+  async listPasskeys(): Promise<import('./types').PasskeyResponse[]> {
+    return this.get('/auth/webauthn/credentials');
+  }
+
+  async renamePasskey(credentialId: string, data: import('./types').RenameCredentialRequest): Promise<void> {
+    return this.put(`/auth/webauthn/credentials/${credentialId}`, data);
+  }
+
+  async deletePasskey(credentialId: string): Promise<void> {
+    return this.delete(`/auth/webauthn/credentials/${credentialId}`);
+  }
 }
