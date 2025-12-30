@@ -46,6 +46,7 @@ impl UserProfileService {
             phone: user.phone,
             is_active: user.is_active,
             email_verified: user.email_verified,
+            is_system_admin: user.is_system_admin,
             created_at: user.created_at,
             updated_at: user.updated_at,
         })
@@ -70,6 +71,7 @@ impl UserProfileService {
             phone: user.phone,
             is_active: user.is_active,
             email_verified: user.email_verified,
+            is_system_admin: user.is_system_admin,
             created_at: user.created_at,
             updated_at: user.updated_at,
         })

@@ -2,68 +2,26 @@ import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
-  User,
-  Shield,
-  Monitor,
-  FileText,
-  X,
-  Package,
-  Link2,
-  Settings,
   Users,
-  Globe,
+  Package,
+  FileText,
+  Shield,
+  X,
+  ArrowLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/stores/authStore';
 
-interface SidebarProps {
+interface AdminSidebarProps {
   open?: boolean;
   onClose?: () => void;
 }
 
-const navItems = [
-  {
-    title: 'Dashboard',
-    href: '/dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'Profile',
-    href: '/profile',
-    icon: User,
-  },
-  {
-    title: 'Security',
-    href: '/security',
-    icon: Shield,
-  },
-  {
-    title: 'Sessions',
-    href: '/sessions',
-    icon: Monitor,
-  },
-  {
-    title: 'Audit Logs',
-    href: '/audit-logs',
-    icon: FileText,
-  },
-  {
-    title: 'My Apps',
-    href: '/apps',
-    icon: Package,
-  },
-  {
-    title: 'Connected Apps',
-    href: '/connected-apps',
-    icon: Link2,
-  },
-];
-
 const adminNavItems = [
   {
-    title: 'Admin Dashboard',
+    title: 'Dashboard',
     href: '/admin',
-    icon: Settings,
+    icon: LayoutDashboard,
+    end: true,
   },
   {
     title: 'Users',
@@ -83,14 +41,11 @@ const adminNavItems = [
   {
     title: 'IP Rules',
     href: '/admin/ip-rules',
-    icon: Globe,
+    icon: Shield,
   },
 ];
 
-export function Sidebar({ open, onClose }: SidebarProps) {
-  const { user } = useAuthStore();
-  const isAdmin = user?.is_system_admin ?? false;
-
+export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
   return (
     <>
       {/* Mobile overlay */}
@@ -116,12 +71,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </Button>
         </div>
 
+        {/* Admin Panel Header */}
+        <div className="px-4 py-3 border-b">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            <span className="font-semibold text-sm">Admin Panel</span>
+          </div>
+        </div>
+
         {/* Navigation */}
         <nav className="flex flex-col gap-1 p-4">
-          {navItems.map((item) => (
+          {adminNavItems.map((item) => (
             <NavLink
               key={item.href}
               to={item.href}
+              end={item.end}
               onClick={onClose}
               className={({ isActive }) =>
                 cn(
@@ -136,35 +100,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               {item.title}
             </NavLink>
           ))}
-
-          {/* Admin Section */}
-          {isAdmin && (
-            <>
-              <div className="my-4 border-t" />
-              <div className="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
-                Admin
-              </div>
-              {adminNavItems.map((item) => (
-                <NavLink
-                  key={item.href}
-                  to={item.href}
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    cn(
-                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                    )
-                  }
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.title}
-                </NavLink>
-              ))}
-            </>
-          )}
         </nav>
+
+        {/* Back to main app link */}
+        <div className="absolute bottom-4 left-0 right-0 px-4">
+          <NavLink
+            to="/dashboard"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to App
+          </NavLink>
+        </div>
       </aside>
     </>
   );

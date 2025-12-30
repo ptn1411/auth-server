@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { Toaster } from '@/components/ui/sonner';
 import { Layout } from '@/components/layout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AdminLayout, AdminProtectedRoute } from '@/components/admin';
 import {
   LoginPage,
   RegisterPage,
@@ -16,6 +17,16 @@ import {
   SessionsPage,
   SecurityPage,
   AuditLogsPage,
+  AppsPage,
+  AppDetailPage,
+  ConnectedAppsPage,
+  AdminDashboardPage,
+  AdminUsersPage,
+  AdminUserDetailPage,
+  AdminAppsPage,
+  AdminAppDetailPage,
+  AdminAuditLogsPage,
+  AdminIpRulesPage,
 } from '@/pages';
 
 function AppContent() {
@@ -120,12 +131,54 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/apps"
+          element={
+            <ProtectedRoute>
+              <AppsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/apps/:appId"
+          element={
+            <ProtectedRoute>
+              <AppDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/connected-apps"
+          element={
+            <ProtectedRoute>
+              <ConnectedAppsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Default redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         
         {/* 404 - redirect to dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+
+      {/* Admin routes with AdminLayout */}
+      <Route
+        path="/admin"
+        element={
+          <AdminProtectedRoute>
+            <AdminLayout />
+          </AdminProtectedRoute>
+        }
+      >
+        <Route index element={<AdminDashboardPage />} />
+        <Route path="users" element={<AdminUsersPage />} />
+        <Route path="users/:userId" element={<AdminUserDetailPage />} />
+        <Route path="apps" element={<AdminAppsPage />} />
+        <Route path="apps/:appId" element={<AdminAppDetailPage />} />
+        <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+        <Route path="ip-rules" element={<AdminIpRulesPage />} />
       </Route>
     </Routes>
   );

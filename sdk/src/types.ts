@@ -87,6 +87,7 @@ export interface UserProfile {
   email: string;
   is_active: boolean;
   email_verified: boolean;
+  is_system_admin: boolean;
   mfa_enabled: boolean;
   created_at: string;
 }

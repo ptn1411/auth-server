@@ -71,6 +71,7 @@ pub struct UserProfileResponse {
     pub phone: Option<String>,
     pub is_active: bool,
     pub email_verified: bool,
+    pub is_system_admin: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
