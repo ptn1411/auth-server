@@ -1,45 +1,58 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import {
-  RoleList,
-  PermissionList,
-  AppUserList,
-  WebhookList,
   ApiKeyList,
-  IpRuleList,
   AppSecretDialog,
-} from '@/components/apps';
-import { useAppsStore } from '@/stores/appsStore';
-import { toast } from 'sonner';
+  AppUserList,
+  IpRuleList,
+  PermissionList,
+  RoleList,
+  WebhookList,
+} from "@/components/apps";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAppsStore } from "@/stores/appsStore";
 import {
   ArrowLeft,
-  Package,
-  Users,
-  Shield,
-  Lock,
-  Webhook,
-  Key,
-  Globe,
-  RefreshCw,
-  Loader2,
-  Copy,
   Check,
-} from 'lucide-react';
+  Copy,
+  Globe,
+  Key,
+  Loader2,
+  Lock,
+  Package,
+  RefreshCw,
+  Shield,
+  Users,
+  Webhook,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 
-type AppDetailTab = 'overview' | 'users' | 'roles' | 'permissions' | 'webhooks' | 'api-keys' | 'ip-rules';
+type AppDetailTab =
+  | "overview"
+  | "users"
+  | "roles"
+  | "permissions"
+  | "webhooks"
+  | "api-keys"
+  | "ip-rules";
 
 export function AppDetailPage() {
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AppDetailTab>('overview');
+  const [activeTab, setActiveTab] = useState<AppDetailTab>("overview");
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
-  const [regeneratedSecret, setRegeneratedSecret] = useState('');
+  const [regeneratedSecret, setRegeneratedSecret] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
@@ -70,9 +83,11 @@ export function AppDetailPage() {
       setRegeneratedSecret(secret);
       setRegenerateDialogOpen(false);
       setSecretDialogOpen(true);
-      toast.success('App secret regenerated successfully');
+      toast.success("App secret regenerated successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to regenerate secret');
+      toast.error(
+        error instanceof Error ? error.message : "Failed to regenerate secret"
+      );
     } finally {
       setIsRegenerating(false);
     }
@@ -89,7 +104,7 @@ export function AppDetailPage() {
       await navigator.clipboard.writeText(appId);
       setCopiedId(true);
       setTimeout(() => setCopiedId(false), 2000);
-      toast.success('App ID copied to clipboard');
+      toast.success("App ID copied to clipboard");
     }
   };
 
@@ -104,7 +119,7 @@ export function AppDetailPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate('/apps')}>
+        <Button variant="ghost" onClick={() => navigate("/apps")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Apps
         </Button>
@@ -118,7 +133,7 @@ export function AppDetailPage() {
   if (!currentApp) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate('/apps')}>
+        <Button variant="ghost" onClick={() => navigate("/apps")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Apps
         </Button>
@@ -133,13 +148,13 @@ export function AppDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/apps')}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/apps")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Package className="h-8 w-8" />
-            {currentApp.app.name || 'App Details'}
+            {currentApp.app.name || "App Details"}
           </h1>
           {currentApp.app.code && (
             <p className="text-muted-foreground">
@@ -152,7 +167,9 @@ export function AppDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AppDetailTab)}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as AppDetailTab)}>
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview" className="flex items-center gap-1">
             <Package className="h-4 w-4" />
@@ -196,12 +213,17 @@ export function AppDetailPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">App ID</label>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    App ID
+                  </label>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="text-sm bg-muted px-2 py-1 rounded flex-1 truncate">
                       {appId}
                     </code>
-                    <Button variant="ghost" size="icon-sm" onClick={handleCopyId}>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={handleCopyId}>
                       {copiedId ? (
                         <Check className="h-4 w-4 text-green-500" />
                       ) : (
@@ -212,13 +234,17 @@ export function AppDetailPage() {
                 </div>
                 {currentApp.app.code && (
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">App Code</label>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      App Code
+                    </label>
                     <p className="mt-1 font-mono">{currentApp.app.code}</p>
                   </div>
                 )}
                 {currentApp.app.name && (
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">App Name</label>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      App Name
+                    </label>
                     <p className="mt-1">{currentApp.app.name}</p>
                   </div>
                 )}
@@ -243,8 +269,7 @@ export function AppDetailPage() {
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() => setRegenerateDialogOpen(true)}
-                >
+                  onClick={() => setRegenerateDialogOpen(true)}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Regenerate Secret
                 </Button>
@@ -273,9 +298,7 @@ export function AppDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
-                  {currentApp.roles.length}
-                </p>
+                <p className="text-2xl font-bold">{currentApp.roles.length}</p>
               </CardContent>
             </Card>
             <Card>
@@ -392,7 +415,7 @@ export function AppDetailPage() {
       <AppSecretDialog
         open={secretDialogOpen}
         onOpenChange={setSecretDialogOpen}
-        appName={currentApp.app.name || 'App'}
+        appName={currentApp.app.name || "App"}
         secret={regeneratedSecret}
         isNewApp={false}
       />

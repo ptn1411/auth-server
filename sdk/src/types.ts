@@ -309,7 +309,6 @@ export interface ConnectedAppsResponse {
   apps: ConnectedApp[];
 }
 
-
 // ============ Webhook Types ============
 
 export interface CreateWebhookRequest {
@@ -371,7 +370,7 @@ export interface ApiKeyWithSecretResponse extends ApiKeyResponse {
 export interface CreateIpRuleRequest {
   ip_address: string;
   ip_range?: string;
-  rule_type: 'whitelist' | 'blacklist';
+  rule_type: "whitelist" | "blacklist";
   reason?: string;
   expires_at?: string;
 }
@@ -547,4 +546,48 @@ export interface PublicScopeInfo {
 
 export interface ListPublicScopesResponse {
   scopes: PublicScopeInfo[];
+}
+
+// ============ OpenID Connect Types ============
+
+export interface OpenIdConfiguration {
+  issuer: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  userinfo_endpoint: string;
+  jwks_uri: string;
+  response_types_supported: string[];
+  subject_types_supported: string[];
+  id_token_signing_alg_values_supported: string[];
+  scopes_supported: string[];
+  claims_supported: string[];
+}
+
+export interface UserInfo {
+  sub: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  middle_name?: string;
+  nickname?: string;
+  preferred_username?: string;
+  profile?: string;
+  picture?: string;
+  website?: string;
+  email?: string;
+  email_verified?: boolean;
+  gender?: string;
+  birthdate?: string;
+  zoneinfo?: string;
+  locale?: string;
+  phone_number?: string;
+  phone_number_verified?: boolean;
+  address?: unknown;
+  updated_at?: number;
+  [key: string]: unknown;
+}
+
+export interface RevokeTokenRequest {
+  token: string;
+  token_type_hint?: "access_token" | "refresh_token";
 }

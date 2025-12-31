@@ -1,23 +1,23 @@
-import { create } from 'zustand';
-import { authClient } from '@/lib/auth-client';
 import type {
-  AppResponse,
-  RoleResponse,
-  PermissionResponse,
-  AppUsersResponse,
-  WebhookResponse,
-  WebhookWithSecretResponse,
   ApiKeyResponse,
   ApiKeyWithSecretResponse,
-  IpRuleResponse,
-  CreateAppRequest,
-  CreateWebhookRequest,
-  UpdateWebhookRequest,
+  AppResponse,
+  AppUsersResponse,
   CreateApiKeyRequest,
-  UpdateApiKeyRequest,
+  CreateAppRequest,
   CreateIpRuleRequest,
+  CreateWebhookRequest,
+  IpRuleResponse,
   PaginationParams,
-} from '@/lib/auth-client';
+  PermissionResponse,
+  RoleResponse,
+  UpdateApiKeyRequest,
+  UpdateWebhookRequest,
+  WebhookResponse,
+  WebhookWithSecretResponse,
+} from "@/lib/auth-client";
+import { authClient } from "@/lib/auth-client";
+import { create } from "zustand";
 
 // Extended AppResponse with secret for creation
 export interface AppWithSecret extends AppResponse {
@@ -49,41 +49,55 @@ interface AppsActions {
   regenerateSecret: (appId: string) => Promise<string>;
   fetchAppDetail: (appId: string) => Promise<void>;
   clearCurrentApp: () => void;
-  
+
   // Role actions
   fetchRoles: (appId: string) => Promise<void>;
   createRole: (appId: string, name: string) => Promise<void>;
   assignRole: (appId: string, userId: string, roleId: string) => Promise<void>;
   removeRole: (appId: string, userId: string, roleId: string) => Promise<void>;
-  
+
   // Permission actions
   fetchPermissions: (appId: string) => Promise<void>;
   createPermission: (appId: string, code: string) => Promise<void>;
-  
+
   // User actions
   fetchAppUsers: (appId: string, params?: PaginationParams) => Promise<void>;
   banUser: (appId: string, userId: string) => Promise<void>;
   unbanUser: (appId: string, userId: string) => Promise<void>;
   removeUser: (appId: string, userId: string) => Promise<void>;
-  
+
   // Webhook actions
   fetchWebhooks: (appId: string) => Promise<void>;
-  createWebhook: (appId: string, data: CreateWebhookRequest) => Promise<WebhookWithSecretResponse>;
-  updateWebhook: (appId: string, webhookId: string, data: UpdateWebhookRequest) => Promise<void>;
+  createWebhook: (
+    appId: string,
+    data: CreateWebhookRequest
+  ) => Promise<WebhookWithSecretResponse>;
+  updateWebhook: (
+    appId: string,
+    webhookId: string,
+    data: UpdateWebhookRequest
+  ) => Promise<void>;
   deleteWebhook: (appId: string, webhookId: string) => Promise<void>;
-  
+
   // API Key actions
   fetchApiKeys: (appId: string) => Promise<void>;
-  createApiKey: (appId: string, data: CreateApiKeyRequest) => Promise<ApiKeyWithSecretResponse>;
-  updateApiKey: (appId: string, keyId: string, data: UpdateApiKeyRequest) => Promise<void>;
+  createApiKey: (
+    appId: string,
+    data: CreateApiKeyRequest
+  ) => Promise<ApiKeyWithSecretResponse>;
+  updateApiKey: (
+    appId: string,
+    keyId: string,
+    data: UpdateApiKeyRequest
+  ) => Promise<void>;
   revokeApiKey: (appId: string, keyId: string) => Promise<void>;
   deleteApiKey: (appId: string, keyId: string) => Promise<void>;
-  
+
   // IP Rule actions
   fetchIpRules: (appId: string) => Promise<void>;
   createIpRule: (appId: string, data: CreateIpRuleRequest) => Promise<void>;
   deleteIpRule: (appId: string, ruleId: string) => Promise<void>;
-  
+
   // Error handling
   clearError: () => void;
 }
@@ -94,7 +108,7 @@ const handleApiError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
   }
-  return 'An unexpected error occurred';
+  return "An unexpected error occurred";
 };
 
 export const useAppsStore = create<AppsStore>()((set, get) => ({
@@ -121,7 +135,7 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
     try {
       const response = await authClient.createApp(data);
       const appWithSecret = response as AppWithSecret;
-      
+
       // Add to apps list (without secret)
       const appWithoutSecret: AppResponse = {
         id: appWithSecret.id,
@@ -132,7 +146,7 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
         apps: [...state.apps, appWithoutSecret],
         isLoading: false,
       }));
-      
+
       return appWithSecret;
     } catch (error) {
       set({ error: handleApiError(error), isLoading: false });
@@ -156,20 +170,22 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Fetch all app-related data in parallel
-      const [webhooks, apiKeys, ipRules, usersResponse] = await Promise.all([
-        authClient.listWebhooks(appId),
-        authClient.listApiKeys(appId),
-        authClient.listAppIpRules(appId),
-        authClient.getAppUsers(appId),
-      ]);
+      const [webhooks, apiKeys, ipRules, usersResponse, appResponse] =
+        await Promise.all([
+          authClient.listWebhooks(appId),
+          authClient.listApiKeys(appId),
+          authClient.listAppIpRules(appId),
+          authClient.getAppUsers(appId),
+          authClient.getApp(appId),
+        ]);
 
       // Note: Roles and permissions require app-auth, not user JWT
       // For now, we'll set them as empty arrays
       // TODO: Add user JWT endpoints for listing roles/permissions
-      
+
       set({
         currentApp: {
-          app: { id: appId, code: '', name: '' }, // Will be populated when we have GET /apps/:id
+          app: { id: appId, code: appResponse.code, name: appResponse.name },
           roles: [],
           permissions: [],
           users: usersResponse,
@@ -435,10 +451,18 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
     }
   },
 
-  updateWebhook: async (appId: string, webhookId: string, data: UpdateWebhookRequest) => {
+  updateWebhook: async (
+    appId: string,
+    webhookId: string,
+    data: UpdateWebhookRequest
+  ) => {
     set({ isLoading: true, error: null });
     try {
-      const updatedWebhook = await authClient.updateWebhook(appId, webhookId, data);
+      const updatedWebhook = await authClient.updateWebhook(
+        appId,
+        webhookId,
+        data
+      );
       const { currentApp } = get();
       if (currentApp) {
         const updatedWebhooks = currentApp.webhooks.map((webhook) =>
@@ -534,7 +558,11 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
     }
   },
 
-  updateApiKey: async (appId: string, keyId: string, data: UpdateApiKeyRequest) => {
+  updateApiKey: async (
+    appId: string,
+    keyId: string,
+    data: UpdateApiKeyRequest
+  ) => {
     set({ isLoading: true, error: null });
     try {
       const updatedKey = await authClient.updateApiKey(appId, keyId, data);
@@ -584,7 +612,9 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
       await authClient.deleteApiKey(appId, keyId);
       const { currentApp } = get();
       if (currentApp) {
-        const updatedKeys = currentApp.apiKeys.filter((key) => key.id !== keyId);
+        const updatedKeys = currentApp.apiKeys.filter(
+          (key) => key.id !== keyId
+        );
         set({
           currentApp: { ...currentApp, apiKeys: updatedKeys },
           isLoading: false,
