@@ -1,0 +1,152 @@
+# Auth Server - Docker Compose
+# 
+# Chạy full stack: Backend + MySQL + Frontend
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d --build      # Rebuild and start
+#   docker-compose logs -f            # View logs
+#   docker-compose down               # Stop all services
+#   docker-compose down -v            # Stop and remove volumes
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # MySQL Database
+  # ==========================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: authserver-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-auth_server}
+      MYSQL_USER: ${MYSQL_USER:-authserver}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-authpassword}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - authserver-network
+
+  # ==========================================================================
+  # Auth Server Backend (Rust)
+  # ==========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: authserver-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: mysql://${MYSQL_USER:-authserver}:${MYSQL_PASSWORD:-authpassword}@mysql:3306/${MYSQL_DATABASE:-auth_server}
+      
+      # JWT - sử dụng keys từ volume
+      JWT_PRIVATE_KEY_FILE: /app/keys/private.pem
+      JWT_PUBLIC_KEY_FILE: /app/keys/public.pem
+      
+      # Token Expiry
+      ACCESS_TOKEN_EXPIRY_SECS: ${ACCESS_TOKEN_EXPIRY_SECS:-900}
+      REFRESH_TOKEN_EXPIRY_SECS: ${REFRESH_TOKEN_EXPIRY_SECS:-604800}
+      
+      # Server
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      
+      # Email (optional)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@localhost}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Auth Server}
+      
+      # Application
+      APP_NAME: ${APP_NAME:-Auth Server}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      
+      # WebAuthn
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Auth Server}
+      WEBAUTHN_RP_ORIGIN: ${WEBAUTHN_RP_ORIGIN:-http://localhost:5173}
+      
+      # Logging
+      RUST_LOG: ${RUST_LOG:-auth_server=info,tower_http=info}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./keys:/app/keys:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - authserver-network
+
+  # ==========================================================================
+  # Frontend (React + Vite)
+  # ==========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    container_name: authserver-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    networks:
+      - authserver-network
+
+  # ==========================================================================
+  # Nginx Reverse Proxy (Optional - for production)
+  # ==========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: authserver-nginx
+    restart: unless-stopped
+    profiles:
+      - production
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - authserver-network
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  authserver-network:
+    driver: bridge
+
+# ==========================================================================
+# Volumes
+# ==========================================================================
+volumes:
+  mysql_data:
+    driver: local
