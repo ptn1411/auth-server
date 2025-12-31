@@ -24,6 +24,7 @@ impl OAuthClientRepository {
         client_id: &str,
         client_secret_hash: &str,
         name: &str,
+        owner_id: Uuid,
         redirect_uris: &[String],
         is_internal: bool,
     ) -> Result<OAuthClient, OAuthError> {
@@ -33,14 +34,15 @@ impl OAuthClientRepository {
 
         sqlx::query(
             r#"
-            INSERT INTO oauth_clients (id, client_id, client_secret_hash, name, redirect_uris, is_internal)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO oauth_clients (id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(id.to_string())
         .bind(client_id)
         .bind(client_secret_hash)
         .bind(name)
+        .bind(owner_id.to_string())
         .bind(&redirect_uris_json)
         .bind(is_internal)
         .execute(&self.pool)
@@ -65,7 +67,7 @@ impl OAuthClientRepository {
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<OAuthClient>, OAuthError> {
         let client = sqlx::query_as::<_, OAuthClient>(
             r#"
-            SELECT id, client_id, client_secret_hash, name, redirect_uris, is_internal, is_active, created_at
+            SELECT id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal, is_active, created_at
             FROM oauth_clients
             WHERE id = ?
             "#,
@@ -83,7 +85,7 @@ impl OAuthClientRepository {
     pub async fn find_by_client_id(&self, client_id: &str) -> Result<Option<OAuthClient>, OAuthError> {
         let client = sqlx::query_as::<_, OAuthClient>(
             r#"
-            SELECT id, client_id, client_secret_hash, name, redirect_uris, is_internal, is_active, created_at
+            SELECT id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal, is_active, created_at
             FROM oauth_clients
             WHERE client_id = ?
             "#,
@@ -100,7 +102,7 @@ impl OAuthClientRepository {
     pub async fn find_active_by_client_id(&self, client_id: &str) -> Result<Option<OAuthClient>, OAuthError> {
         let client = sqlx::query_as::<_, OAuthClient>(
             r#"
-            SELECT id, client_id, client_secret_hash, name, redirect_uris, is_internal, is_active, created_at
+            SELECT id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal, is_active, created_at
             FROM oauth_clients
             WHERE client_id = ? AND is_active = true
             "#,
@@ -236,7 +238,7 @@ impl OAuthClientRepository {
 
         let clients = sqlx::query_as::<_, OAuthClient>(
             r#"
-            SELECT id, client_id, client_secret_hash, name, redirect_uris, is_internal, is_active, created_at
+            SELECT id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal, is_active, created_at
             FROM oauth_clients
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
@@ -255,7 +257,7 @@ impl OAuthClientRepository {
     pub async fn list_all(&self) -> Result<Vec<OAuthClient>, OAuthError> {
         let clients = sqlx::query_as::<_, OAuthClient>(
             r#"
-            SELECT id, client_id, client_secret_hash, name, redirect_uris, is_internal, is_active, created_at
+            SELECT id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal, is_active, created_at
             FROM oauth_clients
             ORDER BY created_at DESC
             "#,
@@ -265,6 +267,42 @@ impl OAuthClientRepository {
         .map_err(|e| OAuthError::ServerError(format!("Database error: {}", e)))?;
 
         Ok(clients)
+    }
+
+    /// List OAuth clients by owner
+    pub async fn list_by_owner(&self, owner_id: Uuid) -> Result<Vec<OAuthClient>, OAuthError> {
+        let clients = sqlx::query_as::<_, OAuthClient>(
+            r#"
+            SELECT id, client_id, client_secret_hash, name, owner_id, redirect_uris, is_internal, is_active, created_at
+            FROM oauth_clients
+            WHERE owner_id = ?
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(owner_id.to_string())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| OAuthError::ServerError(format!("Database error: {}", e)))?;
+
+        Ok(clients)
+    }
+
+    /// Check if user is owner of the client
+    pub async fn is_owner(&self, client_id: Uuid, user_id: Uuid) -> Result<bool, OAuthError> {
+        let result = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) as count
+            FROM oauth_clients
+            WHERE id = ? AND owner_id = ?
+            "#,
+        )
+        .bind(client_id.to_string())
+        .bind(user_id.to_string())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| OAuthError::ServerError(format!("Database error: {}", e)))?;
+
+        Ok(result > 0)
     }
 
     /// Count total OAuth clients

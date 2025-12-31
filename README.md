@@ -31,6 +31,7 @@ A centralized authentication server built with Rust for managing authentication 
 ```bash
 git clone <repository-url>
 cd auth-server
+Import-Certificate -FilePath "docker\nginx\ssl\auth.local.crt" -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 ### 2. Database Setup

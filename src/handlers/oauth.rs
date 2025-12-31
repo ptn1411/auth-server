@@ -657,17 +657,21 @@ fn error_code(error: &OAuthError) -> String {
 // Requirements: 1.1, 1.4
 // ============================================================================
 
-/// GET /oauth/clients - List OAuth clients
+/// GET /oauth/clients - List OAuth clients owned by current user
 ///
-/// Returns a list of all registered OAuth clients.
+/// Returns a list of OAuth clients that the authenticated user owns.
 /// Requires JWT authentication.
 pub async fn list_clients_handler(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<crate::dto::oauth::ListOAuthClientsResponse>, OAuthError> {
+    let user_id = claims.user_id()
+        .map_err(|_| OAuthError::InvalidGrant("Invalid user ID in token".to_string()))?;
+
     let client_repo = OAuthClientRepository::new(state.pool.clone());
     
-    let clients = client_repo.list_all().await?;
+    // Only return clients owned by the current user
+    let clients = client_repo.list_by_owner(user_id).await?;
     
     let client_infos: Vec<crate::dto::oauth::OAuthClientInfo> = clients
         .into_iter()
@@ -697,18 +701,43 @@ pub async fn list_clients_handler(
 /// - 1.5: Distinguish between Internal_App and External_App
 /// - 9.5, 10.6: Log client registration events for audit
 ///
+/// # Security
+/// - Only system admins can create internal apps (is_internal = true)
+/// - Regular users can only create external apps (is_internal = false)
+///
 /// # Returns
 /// - 201 Created with client_id and client_secret (secret only returned once)
 pub async fn register_client_handler(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<ClientRegistrationRequest>,
 ) -> Result<(StatusCode, Json<ClientRegistrationResponse>), OAuthError> {
+    let owner_id = claims.user_id()
+        .map_err(|_| OAuthError::InvalidGrant("Invalid user ID in token".to_string()))?;
+
     let oauth_service = OAuthService::new(state.pool.clone(), state.jwt_manager.clone());
     let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
+    let user_repo = crate::repositories::UserRepository::new(state.pool.clone());
+
+    // Only system admins can create internal apps
+    // Regular users are forced to create external apps (is_internal = false)
+    let is_internal = if req.is_internal {
+        let is_admin = user_repo.is_system_admin(owner_id).await
+            .map_err(|_| OAuthError::ServerError("Failed to check admin status".to_string()))?;
+        if !is_admin {
+            // Silently force external app for non-admins
+            // Or return error: return Err(OAuthError::AccessDenied("Only admins can create internal apps".to_string()));
+            false
+        } else {
+            true
+        }
+    } else {
+        false
+    };
 
     // Validate redirect URIs (HTTPS required for external apps)
     // Requirement 1.4
-    oauth_service.validate_redirect_uris_for_registration(&req.redirect_uris, req.is_internal)?;
+    oauth_service.validate_redirect_uris_for_registration(&req.redirect_uris, is_internal)?;
 
     // Generate unique client_id
     // Requirement 1.2
@@ -722,7 +751,7 @@ pub async fn register_client_handler(
     let client_secret_hash = hash_secret(&client_secret)
         .map_err(|e| OAuthError::ServerError(format!("Failed to hash secret: {}", e)))?;
 
-    // Store the client
+    // Store the client with owner_id
     // Requirement 1.1
     let client_repo = OAuthClientRepository::new(state.pool.clone());
     let client = client_repo
@@ -730,8 +759,9 @@ pub async fn register_client_handler(
             &client_id,
             &client_secret_hash,
             &req.name,
+            owner_id,
             &req.redirect_uris,
-            req.is_internal,
+            is_internal,
         )
         .await?;
 
@@ -741,7 +771,7 @@ pub async fn register_client_handler(
         .create(
             OAuthEventType::ClientRegistered,
             Some(client.id),
-            None,
+            Some(owner_id),
             None,
             Some(serde_json::json!({
                 "name": client.name,
@@ -778,12 +808,16 @@ fn generate_client_id() -> String {
 /// PUT /oauth/clients/{id} - Update OAuth client
 ///
 /// Updates an existing OAuth client's name, redirect URIs, or active status.
+/// Only the owner can update their client.
 pub async fn update_client_handler(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<String>,
     Json(req): Json<UpdateOAuthClientRequest>,
 ) -> Result<Json<crate::dto::oauth::OAuthClientInfo>, OAuthError> {
+    let user_id = claims.user_id()
+        .map_err(|_| OAuthError::InvalidGrant("Invalid user ID in token".to_string()))?;
+
     let client_repo = OAuthClientRepository::new(state.pool.clone());
     let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
 
@@ -797,6 +831,11 @@ pub async fn update_client_handler(
         .await?
         .ok_or(OAuthError::InvalidClient)?;
 
+    // Check ownership - only owner can update
+    if !existing.is_owner(user_id) {
+        return Err(OAuthError::UnauthorizedClient);
+    }
+
     // Update name and redirect_uris if provided
     let name = req.name.unwrap_or(existing.name.clone());
     let redirect_uris = req.redirect_uris.unwrap_or(existing.redirect_uris.clone());
@@ -808,7 +847,7 @@ pub async fn update_client_handler(
     }
 
     // Update client
-    let updated = client_repo.update(client_uuid, &name, &redirect_uris).await?;
+    let _updated = client_repo.update(client_uuid, &name, &redirect_uris).await?;
 
     // Handle is_active change
     if let Some(is_active) = req.is_active {
@@ -827,9 +866,9 @@ pub async fn update_client_handler(
     // Log update event
     audit_repo
         .create(
-            OAuthEventType::ClientRegistered, // Reuse event type for now
+            OAuthEventType::ClientRegistered,
             Some(client_uuid),
-            None,
+            Some(user_id),
             None,
             Some(serde_json::json!({
                 "action": "updated",
@@ -857,11 +896,15 @@ pub async fn update_client_handler(
 /// DELETE /oauth/clients/{id} - Delete OAuth client
 ///
 /// Permanently deletes an OAuth client.
+/// Only the owner can delete their client.
 pub async fn delete_client_handler(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, OAuthError> {
+    let user_id = claims.user_id()
+        .map_err(|_| OAuthError::InvalidGrant("Invalid user ID in token".to_string()))?;
+
     let client_repo = OAuthClientRepository::new(state.pool.clone());
     let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
 
@@ -869,11 +912,16 @@ pub async fn delete_client_handler(
     let client_uuid = Uuid::parse_str(&id)
         .map_err(|_| OAuthError::InvalidRequest("Invalid client ID format".to_string()))?;
 
-    // Get existing client for logging
+    // Get existing client for logging and ownership check
     let existing = client_repo
         .find_by_id(client_uuid)
         .await?
         .ok_or(OAuthError::InvalidClient)?;
+
+    // Check ownership - only owner can delete
+    if !existing.is_owner(user_id) {
+        return Err(OAuthError::UnauthorizedClient);
+    }
 
     // Delete client
     client_repo.delete(client_uuid).await?;
@@ -881,9 +929,9 @@ pub async fn delete_client_handler(
     // Log delete event
     audit_repo
         .create(
-            OAuthEventType::ClientRegistered, // Reuse event type for now
+            OAuthEventType::ClientRegistered,
             Some(client_uuid),
-            None,
+            Some(user_id),
             None,
             Some(serde_json::json!({
                 "action": "deleted",
@@ -903,11 +951,15 @@ pub async fn delete_client_handler(
 /// POST /oauth/clients/{id}/secret - Regenerate client secret
 ///
 /// Generates a new client secret. The old secret is invalidated.
+/// Only the owner can regenerate the secret.
 pub async fn regenerate_client_secret_handler(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateClientSecretResponse>, OAuthError> {
+    let user_id = claims.user_id()
+        .map_err(|_| OAuthError::InvalidGrant("Invalid user ID in token".to_string()))?;
+
     let client_repo = OAuthClientRepository::new(state.pool.clone());
     let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
 
@@ -915,11 +967,16 @@ pub async fn regenerate_client_secret_handler(
     let client_uuid = Uuid::parse_str(&id)
         .map_err(|_| OAuthError::InvalidRequest("Invalid client ID format".to_string()))?;
 
-    // Verify client exists
-    client_repo
+    // Verify client exists and check ownership
+    let existing = client_repo
         .find_by_id(client_uuid)
         .await?
         .ok_or(OAuthError::InvalidClient)?;
+
+    // Check ownership - only owner can regenerate secret
+    if !existing.is_owner(user_id) {
+        return Err(OAuthError::UnauthorizedClient);
+    }
 
     // Generate new secret
     let new_secret = generate_secret();
@@ -934,7 +991,7 @@ pub async fn regenerate_client_secret_handler(
         .create(
             OAuthEventType::ClientRegistered,
             Some(client_uuid),
-            None,
+            Some(user_id),
             None,
             Some(serde_json::json!({
                 "action": "secret_regenerated",

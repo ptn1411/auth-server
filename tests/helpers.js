@@ -1,7 +1,10 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Allow self-signed certs for testing
+
+require('dotenv').config();
 const request = require('supertest');
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
-
+console.log(API_URL)
 /**
  * Create a supertest request instance
  */

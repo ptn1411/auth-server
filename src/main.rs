@@ -225,17 +225,18 @@ pub fn create_router(state: AppState) -> Router {
         ));
 
     // OAuth2 public routes - no authentication required
-    // Requirements: 11.1, 11.2, 11.3, 1.1, 1.4
+    // Requirements: 11.1, 11.2, 11.3
     let oauth_public_routes = Router::new()
         .route("/authorize", get(authorize_handler))
         .route("/authorize/callback", post(authorize_callback_handler))
         .route("/token", post(token_handler))
         .route("/revoke", post(revoke_handler))
-        .route("/clients", post(register_client_handler))
         .route("/scopes", get(list_scopes_handler));
 
     // OAuth2 protected routes - requires JWT authentication
+    // Requirements: 1.1, 1.4 (client registration requires auth)
     let oauth_jwt_protected_routes = Router::new()
+        .route("/clients", post(register_client_handler))
         .route("/clients", get(list_clients_handler))
         .route("/clients/:id", put(update_client_handler))
         .route("/clients/:id", delete(delete_client_handler))
@@ -435,9 +436,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Create database pool with production settings
     let pool = MySqlPoolOptions::new()
-        .max_connections(10)
-        .min_connections(2)
-        .acquire_timeout(Duration::from_secs(5))
+        .max_connections(50)
+        .min_connections(5)
+        .acquire_timeout(Duration::from_secs(10))
         .idle_timeout(Duration::from_secs(600))
         .max_lifetime(Duration::from_secs(1800))
         .connect(&config.database_url)

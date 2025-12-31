@@ -1,7 +1,7 @@
 const { api, generateEmail, generatePassword } = require('./helpers');
 
 const TOTAL = 1_000_000;
-const CONCURRENCY = 50; // số request song song (đừng để quá cao)
+const CONCURRENCY = 10; // số request song song (đừng để quá cao)
 
 async function registerOne() {
   const email = generateEmail();
@@ -12,7 +12,7 @@ async function registerOne() {
     .send({ email, password })
     .then(() => true)
     .catch(err => {
-      console.error(err.response?.status);
+      console.error('error',err);
       return false;
     });
 }

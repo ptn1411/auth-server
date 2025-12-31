@@ -13,6 +13,7 @@ pub struct OAuthClient {
     #[serde(skip_serializing)]
     pub client_secret_hash: String,
     pub name: String,
+    pub owner_id: Option<Uuid>,
     pub redirect_uris: Vec<String>,
     pub is_internal: bool,
     pub is_active: bool,
@@ -26,6 +27,7 @@ pub struct OAuthClientRow {
     pub client_id: String,
     pub client_secret_hash: String,
     pub name: String,
+    pub owner_id: Option<String>,
     pub redirect_uris: serde_json::Value,
     pub is_internal: bool,
     pub is_active: bool,
@@ -42,6 +44,7 @@ impl From<OAuthClientRow> for OAuthClient {
             client_id: row.client_id,
             client_secret_hash: row.client_secret_hash,
             name: row.name,
+            owner_id: row.owner_id.and_then(|id| Uuid::parse_str(&id).ok()),
             redirect_uris,
             is_internal: row.is_internal,
             is_active: row.is_active,
@@ -66,5 +69,10 @@ impl OAuthClient {
     /// Check if a redirect URI is registered for this client
     pub fn has_redirect_uri(&self, uri: &str) -> bool {
         self.redirect_uris.iter().any(|u| u == uri)
+    }
+
+    /// Check if a user is the owner of this client
+    pub fn is_owner(&self, user_id: Uuid) -> bool {
+        self.owner_id == Some(user_id)
     }
 }
