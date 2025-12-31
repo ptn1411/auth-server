@@ -1,6 +1,6 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use uuid::Uuid;
@@ -9,21 +9,53 @@ use crate::config::AppState;
 use crate::dto::user_management::{AppUserInfo, BanUserRequest, PaginatedResponse, PaginationQuery};
 use crate::error::UserManagementError;
 use crate::models::UserApp;
-use crate::services::UserManagementService;
+use crate::services::{UserManagementService, IpRuleService, IpAccessResult};
 use crate::utils::jwt::Claims;
+
+/// Extract client IP from headers
+fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
+    // Check X-Forwarded-For first
+    if let Some(forwarded) = headers.get("x-forwarded-for") {
+        if let Ok(value) = forwarded.to_str() {
+            return Some(value.split(',').next()?.trim().to_string());
+        }
+    }
+    // Check X-Real-IP
+    if let Some(real_ip) = headers.get("x-real-ip") {
+        if let Ok(value) = real_ip.to_str() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
 
 /// POST /apps/{app_id}/register - Register current user to an app
 /// 
 /// # Requirements
 /// - 8.5: Expose POST /apps/{app_id}/register for user app registration
 /// - 2.1-2.4: User app registration requirements
+/// - Also checks IP rules for the app
 pub async fn register_to_app_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     Path(app_id): Path<Uuid>,
 ) -> Result<(StatusCode, Json<UserApp>), UserManagementError> {
     let user_id = claims.user_id()
         .map_err(|_| UserManagementError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    // Check IP rules for this app
+    if let Some(ip) = extract_client_ip(&headers) {
+        let ip_service = IpRuleService::new(state.pool.clone());
+        let ip_result = ip_service.check_ip_access(&ip, Some(app_id)).await
+            .map_err(|e| UserManagementError::InternalError(anyhow::anyhow!("{}", e)))?;
+        
+        if ip_result == IpAccessResult::Blocked {
+            return Err(UserManagementError::UserBanned {
+                reason: Some(format!("IP address {} is blocked for this app", ip)),
+            });
+        }
+    }
     
     let service = UserManagementService::new(state.pool.clone());
     let user_app = service.register_to_app(user_id, app_id).await?;

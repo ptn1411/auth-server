@@ -63,6 +63,14 @@ pub enum WebhookEvent {
     UserDeactivated,
     #[serde(rename = "user.activated")]
     UserActivated,
+    #[serde(rename = "user.app.joined")]
+    UserAppJoined,
+    #[serde(rename = "user.app.banned")]
+    UserAppBanned,
+    #[serde(rename = "user.app.unbanned")]
+    UserAppUnbanned,
+    #[serde(rename = "user.app.removed")]
+    UserAppRemoved,
     #[serde(rename = "app.created")]
     AppCreated,
     #[serde(rename = "app.secret_regenerated")]
@@ -88,6 +96,10 @@ impl WebhookEvent {
             Self::UserUnlocked => "user.unlocked",
             Self::UserDeactivated => "user.deactivated",
             Self::UserActivated => "user.activated",
+            Self::UserAppJoined => "user.app.joined",
+            Self::UserAppBanned => "user.app.banned",
+            Self::UserAppUnbanned => "user.app.unbanned",
+            Self::UserAppRemoved => "user.app.removed",
             Self::AppCreated => "app.created",
             Self::AppSecretRegenerated => "app.secret_regenerated",
             Self::RoleAssigned => "role.assigned",

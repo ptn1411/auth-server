@@ -9,9 +9,10 @@ use crate::models::User;
 use crate::repositories::{MfaRepository, UserAppRepository, UserRepository};
 use crate::services::{
     AccountLockoutService, AuditService, LockoutConfig, MfaService, RateLimitConfig,
-    RateLimiterService, SessionService, DeviceInfo,
+    RateLimiterService, SessionService, DeviceInfo, IpRuleService, IpAccessResult,
+    WebhookService,
 };
-use crate::models::AuditAction;
+use crate::models::{AuditAction, WebhookEvent};
 use crate::utils::email::validate_email;
 use crate::utils::jwt::{AppClaims, JwtManager, TokenPair};
 use crate::utils::password::{hash_password, hash_token, verify_password};
@@ -72,6 +73,8 @@ pub struct AuthService {
     mfa_service: MfaService,
     mfa_repo: MfaRepository,
     session_service: SessionService,
+    ip_rule_service: IpRuleService,
+    webhook_service: WebhookService,
 }
 
 impl AuthService {
@@ -85,6 +88,8 @@ impl AuthService {
         let session_service = SessionService::new(pool.clone(), REFRESH_TOKEN_EXPIRY_DAYS);
         let mfa_service = MfaService::new(pool.clone(), "AuthServer".to_string());
         let mfa_repo = MfaRepository::new(pool.clone());
+        let ip_rule_service = IpRuleService::new(pool.clone());
+        let webhook_service = WebhookService::new(pool.clone());
         Self {
             pool,
             user_repo,
@@ -96,6 +101,8 @@ impl AuthService {
             mfa_service,
             mfa_repo,
             session_service,
+            ip_rule_service,
+            webhook_service,
         }
     }
 
@@ -291,6 +298,33 @@ impl AuthService {
 
         // Check if user is banned from the specified app (Requirement 3.4)
         if let Some(app_id) = app_id {
+            // Check IP rules for this app first
+            if let Some(ref ip) = context.ip_address {
+                let ip_result = self.ip_rule_service.check_ip_access(ip, Some(app_id)).await
+                    .map_err(|e| AuthError::InternalError(anyhow::anyhow!("{}", e)))?;
+                
+                if ip_result == IpAccessResult::Blocked {
+                    let _ = self
+                        .audit_service
+                        .log_auth_event(
+                            Some(user.id),
+                            AuditAction::LoginFailed,
+                            context.ip_address.as_deref(),
+                            context.user_agent.as_deref(),
+                            Some(serde_json::json!({
+                                "reason": "ip_blocked",
+                                "app_id": app_id,
+                                "ip": ip
+                            })),
+                            false,
+                        )
+                        .await;
+                    return Err(AuthError::UserBanned {
+                        reason: Some(format!("IP address {} is blocked for this app", ip)),
+                    });
+                }
+            }
+
             if let Some(user_app) = self
                 .user_app_repo
                 .find(user.id, app_id)
@@ -370,7 +404,7 @@ impl AuthService {
     async fn complete_login(
         &self,
         user_id: Uuid,
-        _app_id: Option<Uuid>,
+        app_id: Option<Uuid>,
         context: &LoginContext,
     ) -> Result<(TokenPair, Uuid), AuthError> {
         // Get user's apps, roles, and permissions for token payload
@@ -407,6 +441,23 @@ impl AuthService {
                 true,
             )
             .await;
+
+        // Trigger webhook for login event (if app_id is provided)
+        if let Some(app_id) = app_id {
+            let webhook_service = self.webhook_service.clone();
+            let payload = serde_json::json!({
+                "event": "user.login",
+                "user_id": user_id.to_string(),
+                "app_id": app_id.to_string(),
+                "ip_address": context.ip_address,
+                "user_agent": context.user_agent,
+                "session_id": session.id.to_string(),
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+            tokio::spawn(async move {
+                let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserLogin, payload).await;
+            });
+        }
 
         Ok((token_pair, session.id))
     }

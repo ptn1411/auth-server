@@ -6,6 +6,7 @@ use crate::error::AppError;
 use crate::models::{IpRule, IpRuleType};
 use crate::repositories::IpRuleRepository;
 
+#[derive(Clone)]
 pub struct IpRuleService {
     repo: IpRuleRepository,
 }

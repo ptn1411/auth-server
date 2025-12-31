@@ -28,6 +28,19 @@ pub struct AppUserInfo {
     pub created_at: DateTime<Utc>,
 }
 
+/// User-App association response (for API Key routes)
+#[derive(Debug, Serialize)]
+pub struct UserAppResponse {
+    pub user_id: Uuid,
+    pub app_id: Uuid,
+    pub email: String,
+    pub status: String,
+    pub roles: Vec<String>,
+    pub banned_at: Option<DateTime<Utc>>,
+    pub banned_reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Generic paginated response wrapper
 #[derive(Debug, Serialize)]
 pub struct PaginatedResponse<T> {

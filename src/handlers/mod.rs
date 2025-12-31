@@ -12,3 +12,4 @@ pub mod webhook;
 pub mod api_key;
 pub mod ip_rule;
 pub mod webauthn;
+pub mod api_key_routes;

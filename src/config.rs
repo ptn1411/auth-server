@@ -19,6 +19,9 @@ pub struct Config {
     // Server
     pub server_host: String,
     pub server_port: u16,
+
+    // Background Workers
+    pub webhook_worker_interval_secs: u64,
 }
 
 impl Config {
@@ -48,6 +51,9 @@ impl Config {
                 .unwrap_or_else(|_| "0.0.0.0".to_string()),
             server_port: std::env::var("SERVER_PORT")
                 .unwrap_or_else(|_| "3000".to_string())
+                .parse()?,
+            webhook_worker_interval_secs: std::env::var("WEBHOOK_WORKER_INTERVAL_SECS")
+                .unwrap_or_else(|_| "10".to_string())
                 .parse()?,
         })
     }

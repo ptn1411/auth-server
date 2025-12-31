@@ -11,13 +11,16 @@ use crate::utils::secret::generate_secret;
 
 type HmacSha256 = Hmac<Sha256>;
 
+#[derive(Clone)]
 pub struct WebhookService {
+    pool: MySqlPool,
     repo: WebhookRepository,
 }
 
 impl WebhookService {
     pub fn new(pool: MySqlPool) -> Self {
         Self {
+            pool: pool.clone(),
             repo: WebhookRepository::new(pool),
         }
     }

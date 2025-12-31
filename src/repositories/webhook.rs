@@ -5,6 +5,7 @@ use chrono::{Utc, Duration};
 use crate::error::AppError;
 use crate::models::{Webhook, WebhookDelivery};
 
+#[derive(Clone)]
 pub struct WebhookRepository {
     pool: MySqlPool,
 }

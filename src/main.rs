@@ -7,6 +7,7 @@ mod models;
 mod repositories;
 mod services;
 mod utils;
+mod workers;
 
 use axum::{
     http::{header, Method},
@@ -81,6 +82,12 @@ use crate::handlers::{
         create_api_key_handler, list_api_keys_handler, get_api_key_handler,
         update_api_key_handler, delete_api_key_handler, revoke_api_key_handler,
     },
+    api_key_routes::{
+        list_users_api_key_handler, get_user_api_key_handler,
+        ban_user_api_key_handler, unban_user_api_key_handler,
+        list_roles_api_key_handler, get_user_roles_api_key_handler,
+        assign_role_api_key_handler, remove_role_api_key_handler,
+    },
     ip_rule::{
         create_ip_rule_handler, create_app_ip_rule_handler, list_ip_rules_handler,
         list_app_ip_rules_handler, check_ip_handler, delete_ip_rule_handler,
@@ -91,7 +98,7 @@ use crate::handlers::{
         list_credentials_handler, rename_credential_handler, delete_credential_handler,
     },
 };
-use crate::middleware::{app_auth_middleware, jwt_auth_middleware, oauth_auth_middleware};
+use crate::middleware::{app_auth_middleware, jwt_auth_middleware, oauth_auth_middleware, api_key_auth_middleware};
 
 /// Health check response
 #[derive(Serialize)]
@@ -376,6 +383,24 @@ pub fn create_router(state: AppState) -> Router {
             jwt_auth_middleware,
         ));
 
+    // API Key authenticated routes - X-API-Key header required
+    // These routes allow machine-to-machine access with scoped permissions
+    let api_key_routes = Router::new()
+        // User management (requires read:users or write:users scope)
+        .route("/users", get(list_users_api_key_handler))
+        .route("/users/:user_id", get(get_user_api_key_handler))
+        .route("/users/:user_id/ban", post(ban_user_api_key_handler))
+        .route("/users/:user_id/unban", post(unban_user_api_key_handler))
+        // Role management (requires read:roles or write:roles scope)
+        .route("/roles", get(list_roles_api_key_handler))
+        .route("/users/:user_id/roles", get(get_user_roles_api_key_handler))
+        .route("/users/:user_id/roles", post(assign_role_api_key_handler))
+        .route("/users/:user_id/roles/:role_id", delete(remove_role_api_key_handler))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            api_key_auth_middleware,
+        ));
+
     // Combine all routes
     Router::new()
         // Health check endpoints
@@ -389,6 +414,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/apps/auth", post(app_auth_handler))
         .nest("/app-api/apps", app_auth_routes)
         .nest("/admin", admin_routes)
+        // API Key authenticated routes
+        .nest("/api/v1", api_key_routes)
         // OAuth2 routes (Requirements 11.1-11.5)
         .nest("/oauth", oauth_public_routes)
         .nest("/oauth", oauth_jwt_protected_routes)
@@ -413,6 +440,7 @@ pub fn create_router(state: AppState) -> Router {
                     header::AUTHORIZATION,
                     header::CONTENT_TYPE,
                     header::ACCEPT,
+                    "X-API-Key".parse().unwrap(),
                 ])
                 .max_age(Duration::from_secs(3600)),
         )
@@ -451,7 +479,12 @@ async fn main() -> anyhow::Result<()> {
     let addr = config.socket_addr();
 
     // Create app state
-    let state = AppState::new(pool, config);
+    let state = AppState::new(pool.clone(), config.clone());
+
+    // Spawn background workers
+    let webhook_interval = config.webhook_worker_interval_secs;
+    let webhook_worker_handle = workers::webhook_worker::spawn_webhook_worker(pool.clone(), webhook_interval);
+    tracing::info!("Background workers started (webhook interval: {}s)", webhook_interval);
 
     // Build router
     let app = create_router(state);
@@ -464,6 +497,10 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    // Abort background workers on shutdown
+    webhook_worker_handle.abort();
+    tracing::info!("Background workers stopped");
 
     tracing::info!("Server shutdown complete");
     Ok(())

@@ -4,7 +4,9 @@ use uuid::Uuid;
 use crate::dto::user_management::{AppUserInfo, PaginatedResponse};
 use crate::error::UserManagementError;
 use crate::models::user_app::{UserApp, UserAppStatus};
-use crate::repositories::{AppRepository, RoleRepository, UserAppRepository, UserAppRoleRepository, UserRepository};
+use crate::models::WebhookEvent;
+use crate::repositories::{AppRepository, RoleRepository, UserAppRepository, UserAppRoleRepository, UserRepository, WebhookRepository};
+use crate::services::WebhookService;
 
 /// Service for user management within apps
 /// 
@@ -12,22 +14,26 @@ use crate::repositories::{AppRepository, RoleRepository, UserAppRepository, User
 /// Requirements: 2.1-2.4, 3.1-3.5, 4.1-4.3, 5.1-5.4, 6.1-6.4
 #[derive(Clone)]
 pub struct UserManagementService {
+    pool: MySqlPool,
     user_repo: UserRepository,
     app_repo: AppRepository,
     user_app_repo: UserAppRepository,
     user_app_role_repo: UserAppRoleRepository,
     role_repo: RoleRepository,
+    webhook_service: WebhookService,
 }
 
 impl UserManagementService {
     /// Create a new UserManagementService with the given database pool
     pub fn new(pool: MySqlPool) -> Self {
         Self {
+            pool: pool.clone(),
             user_repo: UserRepository::new(pool.clone()),
             app_repo: AppRepository::new(pool.clone()),
             user_app_repo: UserAppRepository::new(pool.clone()),
             user_app_role_repo: UserAppRoleRepository::new(pool.clone()),
-            role_repo: RoleRepository::new(pool),
+            role_repo: RoleRepository::new(pool.clone()),
+            webhook_service: WebhookService::new(pool),
         }
     }
 
@@ -126,7 +132,22 @@ impl UserManagementService {
 
         // Create user-app association with status "active"
         // Requirements: 2.1
-        self.user_app_repo.create(user_id, app_id).await
+        let user_app = self.user_app_repo.create(user_id, app_id).await?;
+
+        // Trigger webhook for user.app.joined event
+        let webhook_service = self.webhook_service.clone();
+        let payload = serde_json::json!({
+            "event": "user.app.joined",
+            "user_id": user_id.to_string(),
+            "app_id": app_id.to_string(),
+            "status": "active",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        tokio::spawn(async move {
+            let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppJoined, payload).await;
+        });
+
+        Ok(user_app)
     }
 }
 
@@ -179,12 +200,45 @@ impl UserManagementService {
             Some(_) => {
                 // User is registered, update status to banned
                 // Requirements: 3.1, 3.2
-                self.user_app_repo.update_status(user_id, app_id, UserAppStatus::Banned, reason).await
+                let user_app = self.user_app_repo.update_status(user_id, app_id, UserAppStatus::Banned, reason.clone()).await?;
+
+                // Trigger webhook for user.app.banned event
+                let webhook_service = self.webhook_service.clone();
+                let payload = serde_json::json!({
+                    "event": "user.app.banned",
+                    "user_id": user_id.to_string(),
+                    "app_id": app_id.to_string(),
+                    "banned_by": actor_id.to_string(),
+                    "reason": reason,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                });
+                tokio::spawn(async move {
+                    let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppBanned, payload).await;
+                });
+
+                Ok(user_app)
             }
             None => {
                 // User not registered, create banned record to prevent future registration
                 // Requirements: 3.5
-                self.user_app_repo.create_banned(user_id, app_id, reason).await
+                let user_app = self.user_app_repo.create_banned(user_id, app_id, reason.clone()).await?;
+
+                // Trigger webhook for user.app.banned event
+                let webhook_service = self.webhook_service.clone();
+                let payload = serde_json::json!({
+                    "event": "user.app.banned",
+                    "user_id": user_id.to_string(),
+                    "app_id": app_id.to_string(),
+                    "banned_by": actor_id.to_string(),
+                    "reason": reason,
+                    "pre_registered": false,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                });
+                tokio::spawn(async move {
+                    let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppBanned, payload).await;
+                });
+
+                Ok(user_app)
             }
         }
     }
@@ -234,7 +288,22 @@ impl UserManagementService {
                 } else {
                     // Update status to active, clear banned_at
                     // Requirements: 4.1
-                    self.user_app_repo.update_status(user_id, app_id, UserAppStatus::Active, None).await
+                    let updated_user_app = self.user_app_repo.update_status(user_id, app_id, UserAppStatus::Active, None).await?;
+
+                    // Trigger webhook for user.app.unbanned event
+                    let webhook_service = self.webhook_service.clone();
+                    let payload = serde_json::json!({
+                        "event": "user.app.unbanned",
+                        "user_id": user_id.to_string(),
+                        "app_id": app_id.to_string(),
+                        "unbanned_by": actor_id.to_string(),
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    tokio::spawn(async move {
+                        let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppUnbanned, payload).await;
+                    });
+
+                    Ok(updated_user_app)
                 }
             }
             None => {
@@ -276,6 +345,9 @@ impl UserManagementService {
         // Requirements: 5.2
         self.check_permission(actor_id, app_id).await?;
 
+        // Check if user was registered (for webhook)
+        let was_registered = self.user_app_repo.find(user_id, app_id).await?.is_some();
+
         // Delete user_app_roles for this user in this app
         // Requirements: 5.1
         self.user_app_role_repo.delete_by_user_and_app(user_id, app_id).await
@@ -284,6 +356,21 @@ impl UserManagementService {
         // Delete user_app association
         // Requirements: 5.1, 5.3 (idempotent - delete succeeds even if not exists)
         self.user_app_repo.delete(user_id, app_id).await?;
+
+        // Trigger webhook for user.app.removed event (only if user was registered)
+        if was_registered {
+            let webhook_service = self.webhook_service.clone();
+            let payload = serde_json::json!({
+                "event": "user.app.removed",
+                "user_id": user_id.to_string(),
+                "app_id": app_id.to_string(),
+                "removed_by": actor_id.to_string(),
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+            tokio::spawn(async move {
+                let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppRemoved, payload).await;
+            });
+        }
 
         Ok(())
     }
@@ -354,5 +441,163 @@ impl UserManagementService {
         }
 
         Ok(PaginatedResponse::new(app_users, page, limit, total))
+    }
+
+    /// List all users registered to an app with pagination (without permission check)
+    /// Used by API Key authentication where permission is checked via scopes
+    pub async fn list_app_users_by_api_key(
+        &self,
+        app_id: Uuid,
+        page: u32,
+        limit: u32,
+    ) -> Result<(Vec<crate::dto::UserAppResponse>, i64), UserManagementError> {
+        // Get total count for pagination
+        let total = self.user_app_repo.count_by_app(app_id).await?;
+
+        // Get user_apps for this page
+        let user_apps = self.user_app_repo.list_by_app(app_id, page, limit).await?;
+
+        // Build response for each user_app
+        let mut users = Vec::with_capacity(user_apps.len());
+        for user_app in user_apps {
+            // Get user email
+            let user = self.user_repo.find_by_id(user_app.user_id).await
+                .map_err(|e| UserManagementError::InternalError(e.into()))?;
+            
+            let email = user.map(|u| u.email).unwrap_or_default();
+
+            // Get role names for this user in this app
+            let roles = self.role_repo.get_role_names_for_user_in_app(user_app.user_id, app_id).await
+                .map_err(|e| UserManagementError::InternalError(e.into()))?;
+
+            users.push(crate::dto::UserAppResponse {
+                user_id: user_app.user_id,
+                app_id: user_app.app_id,
+                email,
+                status: user_app.status.to_string(),
+                roles,
+                banned_at: user_app.banned_at,
+                banned_reason: user_app.banned_reason,
+                created_at: user_app.created_at,
+            });
+        }
+
+        Ok((users, total as i64))
+    }
+
+    /// Get a specific user in an app (without permission check)
+    /// Used by API Key authentication
+    pub async fn get_user_in_app(
+        &self,
+        app_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<crate::dto::UserAppResponse, UserManagementError> {
+        // Get user_app association
+        let user_app = self.user_app_repo.find(user_id, app_id).await?
+            .ok_or(UserManagementError::UserNotRegistered)?;
+
+        // Get user email
+        let user = self.user_repo.find_by_id(user_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?
+            .ok_or(UserManagementError::UserNotFound)?;
+
+        // Get role names
+        let roles = self.role_repo.get_role_names_for_user_in_app(user_id, app_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?;
+
+        Ok(crate::dto::UserAppResponse {
+            user_id: user_app.user_id,
+            app_id: user_app.app_id,
+            email: user.email,
+            status: user_app.status.to_string(),
+            roles,
+            banned_at: user_app.banned_at,
+            banned_reason: user_app.banned_reason,
+            created_at: user_app.created_at,
+        })
+    }
+
+    /// Ban a user from an app (without actor permission check)
+    /// Used by API Key authentication where permission is checked via scopes
+    pub async fn ban_user_by_api_key(
+        &self,
+        app_id: Uuid,
+        user_id: Uuid,
+        reason: Option<String>,
+    ) -> Result<UserApp, UserManagementError> {
+        // Check if user exists
+        let user = self.user_repo.find_by_id(user_id).await
+            .map_err(|e| UserManagementError::InternalError(e.into()))?;
+        
+        if user.is_none() {
+            return Err(UserManagementError::UserNotFound);
+        }
+
+        // Check if user is already registered to this app
+        let existing = self.user_app_repo.find(user_id, app_id).await?;
+        
+        let user_app = match existing {
+            Some(_) => {
+                self.user_app_repo.update_status(user_id, app_id, UserAppStatus::Banned, reason.clone()).await?
+            }
+            None => {
+                self.user_app_repo.create_banned(user_id, app_id, reason.clone()).await?
+            }
+        };
+
+        // Trigger webhook for user.app.banned event
+        let webhook_service = self.webhook_service.clone();
+        let payload = serde_json::json!({
+            "event": "user.app.banned",
+            "user_id": user_id.to_string(),
+            "app_id": app_id.to_string(),
+            "reason": reason,
+            "via_api_key": true,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        tokio::spawn(async move {
+            let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppBanned, payload).await;
+        });
+
+        Ok(user_app)
+    }
+
+    /// Unban a user from an app (without actor permission check)
+    /// Used by API Key authentication where permission is checked via scopes
+    pub async fn unban_user_by_api_key(
+        &self,
+        app_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<UserApp, UserManagementError> {
+        // Check if user has an association with this app
+        let existing = self.user_app_repo.find(user_id, app_id).await?;
+        
+        match existing {
+            Some(user_app) => {
+                if user_app.status == UserAppStatus::Active {
+                    Ok(user_app)
+                } else {
+                    let updated_user_app = self.user_app_repo.update_status(user_id, app_id, UserAppStatus::Active, None).await?;
+
+                    // Trigger webhook for user.app.unbanned event
+                    let webhook_service = self.webhook_service.clone();
+                    let payload = serde_json::json!({
+                        "event": "user.app.unbanned",
+                        "user_id": user_id.to_string(),
+                        "app_id": app_id.to_string(),
+                        "via_api_key": true,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    tokio::spawn(async move {
+                        let _ = webhook_service.trigger_event(app_id, WebhookEvent::UserAppUnbanned, payload).await;
+                    });
+
+                    Ok(updated_user_app)
+                }
+            }
+            None => {
+                Err(UserManagementError::UserNotRegistered)
+            }
+        }
     }
 }

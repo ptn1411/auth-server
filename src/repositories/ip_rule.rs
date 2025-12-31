@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use crate::error::AppError;
 use crate::models::{IpRule, IpRuleType};
 
+#[derive(Clone)]
 pub struct IpRuleRepository {
     pool: MySqlPool,
 }

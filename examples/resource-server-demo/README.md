@@ -44,6 +44,7 @@ You can skip prompts by setting `.env` file:
 
 ```env
 AUTH_SERVER_URL=http://localhost:3000
-APP_ID=your_app_uuid
-APP_SECRET=your_secret_here
+APP_CODE=22ssssss_1767146578771
+APP_SECRET="s1z&O-Gf+Ojt#+ssaZE9t*VRQDkp#UX0J71E539SNyEYVZu&"
+APP_ID=74f56fd5-b74d-4434-b47f-b17a077f575c
 ```
