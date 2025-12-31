@@ -192,6 +192,10 @@ export function LoginForm() {
                 </span>
               )}
             </Button>
+            
+            <p className="text-xs text-center text-muted-foreground">
+              Click above to use fingerprint, Face ID, or scan QR with your phone
+            </p>
           </>
         )}
 

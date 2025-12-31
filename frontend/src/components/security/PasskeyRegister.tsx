@@ -6,7 +6,7 @@ import { DialogFooter } from '@/components/ui/dialog';
 import { useWebAuthn } from '@/hooks/useWebAuthn';
 import type { PasskeyResponse } from '@/lib/auth-client';
 import { toast } from 'sonner';
-import { Loader2, Key } from 'lucide-react';
+import { Loader2, Key, Smartphone } from 'lucide-react';
 
 interface PasskeyRegisterProps {
   onSuccess: (passkey: PasskeyResponse) => void;
@@ -40,7 +40,7 @@ export function PasskeyRegister({ onSuccess, onCancel }: PasskeyRegisterProps) {
       </div>
 
       <p className="text-sm text-muted-foreground text-center">
-        Your device will prompt you to authenticate using your fingerprint, face, or security key.
+        Register a passkey for passwordless login. You can use this device or scan a QR code with your phone.
       </p>
 
       <div className="space-y-2">
@@ -59,6 +59,16 @@ export function PasskeyRegister({ onSuccess, onCancel }: PasskeyRegisterProps) {
       {error && (
         <p className="text-sm text-destructive text-center">{error}</p>
       )}
+
+      <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+        <div className="flex items-center gap-2 text-sm">
+          <Smartphone className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium">Want to use your iPhone or Android?</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Click "Register Passkey" below. Your browser will show a QR code that you can scan with your phone's camera to register a passkey from that device.
+        </p>
+      </div>
 
       <DialogFooter>
         <Button
