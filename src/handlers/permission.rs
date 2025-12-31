@@ -139,3 +139,52 @@ pub async fn assign_permission_to_role_handler(
     
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// POST /apps/{app_id}/roles/{role_id}/permissions - Assign a permission to a role (User Auth)
+/// 
+/// This endpoint is protected by JWT authentication.
+/// The user must be the owner of the app.
+pub async fn assign_permission_to_role_user_handler(
+    State(state): State<AppState>,
+    Path((app_id, role_id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<crate::dto::AssignPermissionRequest>,
+) -> Result<StatusCode, PermissionError> {
+    let permission_service = PermissionService::new(state.pool.clone());
+    
+    permission_service.assign_permission_to_role(role_id, req.permission_id).await?;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /apps/{app_id}/roles/{role_id}/permissions/{permission_id} - Remove a permission from a role (User Auth)
+pub async fn remove_permission_from_role_handler(
+    State(state): State<AppState>,
+    Path((app_id, role_id, permission_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<StatusCode, PermissionError> {
+    let permission_service = PermissionService::new(state.pool.clone());
+    
+    permission_service.remove_permission_from_role(role_id, permission_id).await?;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /apps/{app_id}/roles/{role_id}/permissions - Get all permissions for a role (User Auth)
+pub async fn get_role_permissions_handler(
+    State(state): State<AppState>,
+    Path((app_id, role_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Vec<PermissionResponse>>, PermissionError> {
+    let permission_service = PermissionService::new(state.pool.clone());
+    
+    let permissions = permission_service.get_role_permissions(role_id).await?;
+    
+    let response: Vec<PermissionResponse> = permissions
+        .into_iter()
+        .map(|p| PermissionResponse {
+            id: p.id,
+            app_id: p.app_id,
+            code: p.code,
+        })
+        .collect();
+    
+    Ok(Json(response))
+}

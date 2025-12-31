@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OAuth2 Demo - Third Party App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔐 OAuth2 Demo App</h1>
+      <p class="subtitle">Third-party application testing OAuth2 Authorization Code Flow with PKCE</p>
+    </header>
+
+    <!-- Configuration Section -->
+    <section class="card" id="config-section">
+      <h2>⚙️ Configuration</h2>
+      <div class="form-group">
+        <label for="auth-server-url">Auth Server URL</label>
+        <input type="text" id="auth-server-url" value="http://localhost:3000" placeholder="http://localhost:3000">
+      </div>
+      <div class="form-group">
+        <label for="client-id">Client ID</label>
+        <input type="text" id="client-id" placeholder="Enter your OAuth Client ID">
+      </div>
+      <div class="form-group">
+        <label for="redirect-uri">Redirect URI</label>
+        <input type="text" id="redirect-uri" value="http://localhost:8080/callback.html" placeholder="http://localhost:8080/callback.html">
+      </div>
+      <div class="form-group">
+        <label for="scopes">Scopes (space-separated)</label>
+        <input type="text" id="scopes" value="openid profile email" placeholder="openid profile email">
+        <p class="scope-hint">Available: openid, profile, email, profile.read, email.read, offline_access</p>
+        <button type="button" id="fetch-scopes-btn" class="btn btn-secondary btn-small" style="margin-top: 8px;">
+          Fetch Available Scopes
+        </button>
+      </div>
+    </section>
+
+    <!-- Login Section -->
+    <section class="card" id="login-section">
+      <h2>🚀 Authorization</h2>
+      <p>Click the button below to start the OAuth2 Authorization Code Flow with PKCE.</p>
+      <button id="login-btn" class="btn btn-primary">
+        <span class="btn-icon">🔑</span>
+        Login with Auth Server
+      </button>
+      <div id="login-status" class="status hidden"></div>
+    </section>
+
+    <!-- Token Section -->
+    <section class="card hidden" id="token-section">
+      <h2>🎫 Tokens</h2>
+      <div class="token-display">
+        <div class="token-item">
+          <label>Access Token</label>
+          <div class="token-value" id="access-token">-</div>
+        </div>
+        <div class="token-item">
+          <label>Refresh Token</label>
+          <div class="token-value" id="refresh-token">-</div>
+        </div>
+        <div class="token-item">
+          <label>Token Type</label>
+          <div class="token-value" id="token-type">-</div>
+        </div>
+        <div class="token-item">
+          <label>Expires In</label>
+          <div class="token-value" id="expires-in">-</div>
+        </div>
+        <div class="token-item">
+          <label>Scopes</label>
+          <div class="token-value" id="token-scopes">-</div>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button id="userinfo-btn" class="btn btn-secondary">
+          <span class="btn-icon">👤</span>
+          Get User Info
+        </button>
+        <button id="logout-btn" class="btn btn-danger">
+          <span class="btn-icon">🚪</span>
+          Logout
+        </button>
+      </div>
+    </section>
+
+    <!-- User Info Section -->
+    <section class="card hidden" id="userinfo-section">
+      <h2>👤 User Info</h2>
+      <pre id="userinfo-data"></pre>
+    </section>
+
+    <!-- Debug Section -->
+    <section class="card">
+      <h2>📋 Debug Log</h2>
+      <div id="debug-log" class="debug-log"></div>
+      <button id="clear-log-btn" class="btn btn-secondary btn-small">Clear Log</button>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

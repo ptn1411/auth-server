@@ -1,3 +1,4 @@
+use chrono::Utc;
 use sqlx::MySqlPool;
 use uuid::Uuid;
 
@@ -6,6 +7,12 @@ use crate::models::App;
 use crate::repositories::AppRepository;
 use crate::utils::jwt::JwtManager;
 use crate::utils::secret::{generate_secret, hash_secret, verify_secret};
+
+/// Generate code with timestamp suffix (code_timestamp) like JS Date.now()
+fn generate_code_with_timestamp(code: &str) -> String {
+    let timestamp = Utc::now().timestamp_millis();
+    format!("{}_{}", code, timestamp)
+}
 
 /// Service for app management operations
 /// 
@@ -90,7 +97,7 @@ impl AppService {
     /// Create a new app with a generated secret
     /// 
     /// # Arguments
-    /// * `code` - Unique identifier code for the app
+    /// * `code` - Unique identifier code for the app (will be suffixed with current date)
     /// * `name` - Display name for the app
     /// * `owner_id` - The user ID of the app owner
     /// 
@@ -108,6 +115,9 @@ impl AppService {
         name: &str,
         owner_id: Uuid,
     ) -> Result<(App, String), AppError> {
+        // Generate code with timestamp suffix (code_timestamp)
+        let code_with_timestamp = generate_code_with_timestamp(code);
+        
         // Generate a cryptographically secure secret (Requirements: 1.1, 1.4)
         let plain_secret = generate_secret();
         
@@ -115,7 +125,7 @@ impl AppService {
         let secret_hash = hash_secret(&plain_secret)?;
         
         // Store the app with the hashed secret
-        let app = self.app_repo.create_with_secret(code, name, owner_id, &secret_hash).await?;
+        let app = self.app_repo.create_with_secret(&code_with_timestamp, name, owner_id, &secret_hash).await?;
         
         // Return the app and plain-text secret (Requirements: 1.2 - only returned once)
         Ok((app, plain_secret))

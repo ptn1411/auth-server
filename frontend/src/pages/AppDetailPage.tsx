@@ -324,7 +324,9 @@ export function AppDetailPage() {
             <RoleList
               appId={appId}
               roles={currentApp.roles}
+              permissions={currentApp.permissions}
               isLoading={isLoading}
+              onPermissionsChanged={() => fetchAppDetail(appId)}
             />
           )}
         </TabsContent>

@@ -4,6 +4,7 @@ export { CreateAppDialog } from './CreateAppDialog';
 export { AppSecretDialog } from './AppSecretDialog';
 export { RoleList } from './RoleList';
 export { CreateRoleDialog } from './CreateRoleDialog';
+export { RolePermissionsDialog } from './RolePermissionsDialog';
 export { PermissionList } from './PermissionList';
 export { CreatePermissionDialog } from './CreatePermissionDialog';
 export { AppUserList } from './AppUserList';

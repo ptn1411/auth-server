@@ -23,11 +23,12 @@ use crate::config::AppState;
 use crate::dto::oauth::{
     AuthorizationRequest, ClientRegistrationRequest, ClientRegistrationResponse,
     ConnectedAppInfo, ConnectedAppsResponse, OAuthTokenResponseDto, OpenIdConfiguration,
-    RevokeRequest, TokenRequest, UserInfoResponse,
+    RegenerateClientSecretResponse, RevokeRequest, TokenRequest, UpdateOAuthClientRequest,
+    UserInfoResponse,
 };
 use crate::error::OAuthError;
 use crate::models::OAuthEventType;
-use crate::repositories::{OAuthAuditLogRepository, OAuthClientRepository, UserRepository};
+use crate::repositories::{OAuthAuditLogRepository, OAuthClientRepository, OAuthScopeRepository, UserRepository};
 use crate::services::{ConsentService, OAuthService};
 use crate::utils::jwt::{Claims, OAuth2Claims};
 use crate::utils::secret::{generate_secret, hash_secret};
@@ -560,14 +561,42 @@ pub async fn openid_configuration_handler(
         state.config.server_host, state.config.server_port
     );
 
-    // Get available scopes from database (simplified - using static list)
-    let scopes = vec![
-        "openid".to_string(),
-        "profile".to_string(),
-        "email".to_string(),
-    ];
+    // Get available scopes from database
+    let scope_repo = OAuthScopeRepository::new(state.pool.clone());
+    let scopes = scope_repo
+        .list_active()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| s.code)
+        .collect();
 
     Json(OpenIdConfiguration::new(&base_url, scopes))
+}
+
+// ============================================================================
+// Scopes Endpoint
+// ============================================================================
+
+/// GET /oauth/scopes - List available OAuth scopes
+///
+/// Returns a list of all active OAuth scopes that can be requested.
+pub async fn list_scopes_handler(
+    State(state): State<AppState>,
+) -> Result<Json<crate::dto::oauth::ListScopesResponse>, OAuthError> {
+    let scope_repo = OAuthScopeRepository::new(state.pool.clone());
+    
+    let scopes = scope_repo.list_active().await?;
+    
+    let scope_infos: Vec<crate::dto::oauth::ScopeInfo> = scopes
+        .into_iter()
+        .map(|s| crate::dto::oauth::ScopeInfo {
+            code: s.code,
+            description: s.description,
+        })
+        .collect();
+    
+    Ok(Json(crate::dto::oauth::ListScopesResponse { scopes: scope_infos }))
 }
 
 // ============================================================================
@@ -613,6 +642,34 @@ fn error_code(error: &OAuthError) -> String {
 // Client Registration Endpoint (Task 13.1)
 // Requirements: 1.1, 1.4
 // ============================================================================
+
+/// GET /oauth/clients - List OAuth clients
+///
+/// Returns a list of all registered OAuth clients.
+/// Requires JWT authentication.
+pub async fn list_clients_handler(
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+) -> Result<Json<crate::dto::oauth::ListOAuthClientsResponse>, OAuthError> {
+    let client_repo = OAuthClientRepository::new(state.pool.clone());
+    
+    let clients = client_repo.list_all().await?;
+    
+    let client_infos: Vec<crate::dto::oauth::OAuthClientInfo> = clients
+        .into_iter()
+        .map(|c| crate::dto::oauth::OAuthClientInfo {
+            id: c.id.to_string(),
+            client_id: c.client_id,
+            name: c.name,
+            redirect_uris: c.redirect_uris,
+            is_internal: c.is_internal,
+            is_active: c.is_active,
+            created_at: c.created_at,
+        })
+        .collect();
+    
+    Ok(Json(crate::dto::oauth::ListOAuthClientsResponse { clients: client_infos }))
+}
 
 /// POST /oauth/clients - Client registration endpoint
 ///
@@ -698,6 +755,183 @@ pub async fn register_client_handler(
 fn generate_client_id() -> String {
     // Use UUID v4 for uniqueness
     Uuid::new_v4().to_string()
+}
+
+// ============================================================================
+// Client Update Endpoint
+// ============================================================================
+
+/// PUT /oauth/clients/{id} - Update OAuth client
+///
+/// Updates an existing OAuth client's name, redirect URIs, or active status.
+pub async fn update_client_handler(
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateOAuthClientRequest>,
+) -> Result<Json<crate::dto::oauth::OAuthClientInfo>, OAuthError> {
+    let client_repo = OAuthClientRepository::new(state.pool.clone());
+    let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
+
+    // Parse UUID
+    let client_uuid = Uuid::parse_str(&id)
+        .map_err(|_| OAuthError::InvalidRequest("Invalid client ID format".to_string()))?;
+
+    // Get existing client
+    let existing = client_repo
+        .find_by_id(client_uuid)
+        .await?
+        .ok_or(OAuthError::InvalidClient)?;
+
+    // Update name and redirect_uris if provided
+    let name = req.name.unwrap_or(existing.name.clone());
+    let redirect_uris = req.redirect_uris.unwrap_or(existing.redirect_uris.clone());
+
+    // Validate redirect URIs for external apps
+    if !existing.is_internal {
+        let oauth_service = OAuthService::new(state.pool.clone(), state.jwt_manager.clone());
+        oauth_service.validate_redirect_uris_for_registration(&redirect_uris, existing.is_internal)?;
+    }
+
+    // Update client
+    let updated = client_repo.update(client_uuid, &name, &redirect_uris).await?;
+
+    // Handle is_active change
+    if let Some(is_active) = req.is_active {
+        if is_active != existing.is_active {
+            if is_active {
+                client_repo.activate(client_uuid).await?;
+            } else {
+                client_repo.deactivate(client_uuid).await?;
+            }
+        }
+    }
+
+    // Fetch final state
+    let final_client = client_repo.find_by_id(client_uuid).await?.ok_or(OAuthError::InvalidClient)?;
+
+    // Log update event
+    audit_repo
+        .create(
+            OAuthEventType::ClientRegistered, // Reuse event type for now
+            Some(client_uuid),
+            None,
+            None,
+            Some(serde_json::json!({
+                "action": "updated",
+                "name": final_client.name,
+            })),
+        )
+        .await
+        .ok();
+
+    Ok(Json(crate::dto::oauth::OAuthClientInfo {
+        id: final_client.id.to_string(),
+        client_id: final_client.client_id,
+        name: final_client.name,
+        redirect_uris: final_client.redirect_uris,
+        is_internal: final_client.is_internal,
+        is_active: final_client.is_active,
+        created_at: final_client.created_at,
+    }))
+}
+
+// ============================================================================
+// Client Delete Endpoint
+// ============================================================================
+
+/// DELETE /oauth/clients/{id} - Delete OAuth client
+///
+/// Permanently deletes an OAuth client.
+pub async fn delete_client_handler(
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, OAuthError> {
+    let client_repo = OAuthClientRepository::new(state.pool.clone());
+    let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
+
+    // Parse UUID
+    let client_uuid = Uuid::parse_str(&id)
+        .map_err(|_| OAuthError::InvalidRequest("Invalid client ID format".to_string()))?;
+
+    // Get existing client for logging
+    let existing = client_repo
+        .find_by_id(client_uuid)
+        .await?
+        .ok_or(OAuthError::InvalidClient)?;
+
+    // Delete client
+    client_repo.delete(client_uuid).await?;
+
+    // Log delete event
+    audit_repo
+        .create(
+            OAuthEventType::ClientRegistered, // Reuse event type for now
+            Some(client_uuid),
+            None,
+            None,
+            Some(serde_json::json!({
+                "action": "deleted",
+                "name": existing.name,
+            })),
+        )
+        .await
+        .ok();
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ============================================================================
+// Client Regenerate Secret Endpoint
+// ============================================================================
+
+/// POST /oauth/clients/{id}/secret - Regenerate client secret
+///
+/// Generates a new client secret. The old secret is invalidated.
+pub async fn regenerate_client_secret_handler(
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+    Path(id): Path<String>,
+) -> Result<Json<RegenerateClientSecretResponse>, OAuthError> {
+    let client_repo = OAuthClientRepository::new(state.pool.clone());
+    let audit_repo = OAuthAuditLogRepository::new(state.pool.clone());
+
+    // Parse UUID
+    let client_uuid = Uuid::parse_str(&id)
+        .map_err(|_| OAuthError::InvalidRequest("Invalid client ID format".to_string()))?;
+
+    // Verify client exists
+    client_repo
+        .find_by_id(client_uuid)
+        .await?
+        .ok_or(OAuthError::InvalidClient)?;
+
+    // Generate new secret
+    let new_secret = generate_secret();
+    let new_secret_hash = hash_secret(&new_secret)
+        .map_err(|e| OAuthError::ServerError(format!("Failed to hash secret: {}", e)))?;
+
+    // Update secret
+    client_repo.update_secret(client_uuid, &new_secret_hash).await?;
+
+    // Log regenerate event
+    audit_repo
+        .create(
+            OAuthEventType::ClientRegistered,
+            Some(client_uuid),
+            None,
+            None,
+            Some(serde_json::json!({
+                "action": "secret_regenerated",
+            })),
+        )
+        .await
+        .ok();
+
+    Ok(Json(RegenerateClientSecretResponse {
+        client_secret: new_secret,
+    }))
 }
 
 // ============================================================================

@@ -5,3 +5,4 @@ export { AdminAppsPage } from './AdminAppsPage';
 export { AdminAppDetailPage } from './AdminAppDetailPage';
 export { AdminAuditLogsPage } from './AdminAuditLogsPage';
 export { AdminIpRulesPage } from './AdminIpRulesPage';
+export { AdminScopesPage } from './AdminScopesPage';

@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import { NavLink } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Users,
@@ -8,8 +8,9 @@ import {
   Shield,
   X,
   ArrowLeft,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
+  KeyRound,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface AdminSidebarProps {
   open?: boolean;
@@ -18,29 +19,35 @@ interface AdminSidebarProps {
 
 const adminNavItems = [
   {
-    title: 'Dashboard',
-    href: '/admin',
+    title: "Dashboard",
+    href: "/admin",
     icon: LayoutDashboard,
     end: true,
   },
   {
-    title: 'Users',
-    href: '/admin/users',
+    title: "Users",
+    href: "/admin/users",
     icon: Users,
   },
   {
-    title: 'Apps',
-    href: '/admin/apps',
+    title: "Apps",
+    href: "/admin/apps",
     icon: Package,
   },
   {
-    title: 'Audit Logs',
-    href: '/admin/audit-logs',
+    title: "OAuth Scopes",
+
+    icon: KeyRound,
+    href: "/admin/scopes",
+  },
+  {
+    title: "Audit Logs",
+    href: "/admin/audit-logs",
     icon: FileText,
   },
   {
-    title: 'IP Rules',
-    href: '/admin/ip-rules',
+    title: "IP Rules",
+    href: "/admin/ip-rules",
     icon: Shield,
   },
 ];
@@ -59,8 +66,8 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed top-14 z-40 h-[calc(100vh-3.5rem)] w-64 border-r bg-background transition-transform duration-300 ease-in-out md:sticky md:translate-x-0',
-          open ? 'translate-x-0' : '-translate-x-full'
+          "fixed top-14 z-40 h-[calc(100vh-3.5rem)] w-64 border-r bg-background transition-transform duration-300 ease-in-out md:sticky md:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Mobile close button */}
@@ -89,10 +96,10 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
               onClick={onClose}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )
               }
             >

@@ -12,6 +12,8 @@ import {
   Settings,
   Users,
   Globe,
+  Key,
+  KeyRound,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
@@ -57,6 +59,11 @@ const navItems = [
     href: '/connected-apps',
     icon: Link2,
   },
+  {
+    title: 'OAuth Clients',
+    href: '/oauth-clients',
+    icon: Key,
+  },
 ];
 
 const adminNavItems = [
@@ -74,6 +81,11 @@ const adminNavItems = [
     title: 'Apps',
     href: '/admin/apps',
     icon: Package,
+  },
+  {
+    title: 'OAuth Scopes',
+    href: '/admin/scopes',
+    icon: KeyRound,
   },
   {
     title: 'Audit Logs',

@@ -383,6 +383,18 @@ export class AuthServerClient {
     return this.post(`/apps/${appId}/permissions`, data);
   }
 
+  async assignPermissionToRole(appId: string, roleId: string, data: AssignPermissionRequest): Promise<void> {
+    return this.post(`/apps/${appId}/roles/${roleId}/permissions`, data);
+  }
+
+  async removePermissionFromRole(appId: string, roleId: string, permissionId: string): Promise<void> {
+    return this.delete(`/apps/${appId}/roles/${roleId}/permissions/${permissionId}`);
+  }
+
+  async getRolePermissions(appId: string, roleId: string): Promise<PermissionResponse[]> {
+    return this.get(`/apps/${appId}/roles/${roleId}/permissions`);
+  }
+
   // ============ App User Management API ============
 
   async registerToApp(appId: string): Promise<{ message: string }> {
@@ -591,5 +603,61 @@ export class AuthServerClient {
 
   async deletePasskey(credentialId: string): Promise<void> {
     return this.delete(`/auth/webauthn/credentials/${credentialId}`);
+  }
+
+  // ============ Admin OAuth Scopes API ============
+
+  async adminListScopes(params?: PaginationParams): Promise<import('./types').ListScopesResponse> {
+    return this.get('/admin/scopes', params);
+  }
+
+  async adminGetScope(scopeId: string): Promise<import('./types').OAuthScope> {
+    return this.get(`/admin/scopes/${scopeId}`);
+  }
+
+  async adminCreateScope(data: import('./types').CreateScopeRequest): Promise<import('./types').OAuthScope> {
+    return this.post('/admin/scopes', data);
+  }
+
+  async adminUpdateScope(scopeId: string, data: import('./types').UpdateScopeRequest): Promise<import('./types').OAuthScope> {
+    return this.put(`/admin/scopes/${scopeId}`, data);
+  }
+
+  async adminActivateScope(scopeId: string): Promise<{ message: string }> {
+    return this.post(`/admin/scopes/${scopeId}/activate`);
+  }
+
+  async adminDeactivateScope(scopeId: string): Promise<{ message: string }> {
+    return this.post(`/admin/scopes/${scopeId}/deactivate`);
+  }
+
+  async adminDeleteScope(scopeId: string): Promise<{ message: string }> {
+    return this.delete(`/admin/scopes/${scopeId}`);
+  }
+
+  // ============ OAuth Clients API ============
+
+  async listOAuthClients(): Promise<import('./types').ListOAuthClientsResponse> {
+    return this.get('/oauth/clients');
+  }
+
+  async createOAuthClient(data: import('./types').CreateOAuthClientRequest): Promise<import('./types').OAuthClientWithSecret> {
+    return this.post('/oauth/clients', data);
+  }
+
+  async updateOAuthClient(clientId: string, data: import('./types').UpdateOAuthClientRequest): Promise<import('./types').OAuthClientInfo> {
+    return this.put(`/oauth/clients/${clientId}`, data);
+  }
+
+  async deleteOAuthClient(clientId: string): Promise<void> {
+    return this.delete(`/oauth/clients/${clientId}`);
+  }
+
+  async regenerateOAuthClientSecret(clientId: string): Promise<{ client_secret: string }> {
+    return this.post(`/oauth/clients/${clientId}/secret`);
+  }
+
+  async listPublicScopes(): Promise<import('./types').ListPublicScopesResponse> {
+    return this.request('GET', '/oauth/scopes', { auth: false });
   }
 }

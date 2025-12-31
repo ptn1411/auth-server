@@ -263,3 +263,147 @@ const client = new AuthServerClient({
 ## License
 
 MIT
+
+## OAuth2 Popup Flow
+
+The SDK provides utilities for OAuth2 authorization using popup windows with postMessage communication.
+
+### Basic Usage
+
+```typescript
+import { OAuthClient } from 'auth-server-sdk';
+
+const oauth = new OAuthClient({
+  authServerUrl: 'http://localhost:3000',
+  clientId: 'your-client-id',
+  redirectUri: 'http://localhost:5173/oauth/callback',
+  scopes: ['openid', 'profile', 'email'],
+});
+
+// Full login flow (opens popup, gets code, exchanges for tokens)
+try {
+  const tokens = await oauth.login();
+  console.log(tokens.access_token);
+  console.log(tokens.refresh_token);
+} catch (error) {
+  if (error.error === 'access_denied') {
+    console.log('User denied authorization');
+  }
+}
+```
+
+### Step-by-Step Flow
+
+```typescript
+import { OAuthClient, generatePKCE } from 'auth-server-sdk';
+
+const oauth = new OAuthClient({
+  authServerUrl: 'http://localhost:3000',
+  clientId: 'your-client-id',
+  redirectUri: 'http://localhost:5173/oauth/callback',
+});
+
+// Step 1: Open popup and get authorization code
+const { code, codeVerifier } = await oauth.authorize();
+
+// Step 2: Exchange code for tokens
+const tokens = await oauth.exchangeCodeForTokens(code, codeVerifier);
+```
+
+### Callback Page Setup
+
+Create a callback page at your `redirectUri` that sends the result back to the opener:
+
+```tsx
+// React example: OAuthCallbackPage.tsx
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+export function OAuthCallbackPage() {
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const message = {
+      type: 'oauth_callback',
+      code: searchParams.get('code'),
+      state: searchParams.get('state'),
+      error: searchParams.get('error'),
+      error_description: searchParams.get('error_description'),
+    };
+
+    if (window.opener) {
+      window.opener.postMessage(message, '*');
+      setTimeout(() => window.close(), 100);
+    }
+  }, [searchParams]);
+
+  return <div>Processing authorization...</div>;
+}
+```
+
+Or use the built-in helper:
+
+```typescript
+import { createCallbackPageHtml } from 'auth-server-sdk';
+
+// Returns complete HTML for a callback page
+const html = createCallbackPageHtml();
+```
+
+### Configuration Options
+
+```typescript
+const oauth = new OAuthClient({
+  authServerUrl: 'http://localhost:3000',  // Auth server URL
+  clientId: 'your-client-id',              // OAuth client ID
+  redirectUri: 'http://localhost/callback', // Registered redirect URI
+  scopes: 'openid profile email',          // Space-separated or array
+  popupWidth: 500,                         // Popup width (default: 500)
+  popupHeight: 600,                        // Popup height (default: 600)
+});
+```
+
+### PKCE Support
+
+The SDK automatically generates PKCE (Proof Key for Code Exchange) challenges:
+
+```typescript
+import { generatePKCE } from 'auth-server-sdk';
+
+const pkce = await generatePKCE();
+console.log(pkce.codeVerifier);      // Random 64-char string
+console.log(pkce.codeChallenge);     // SHA256 hash, base64url encoded
+console.log(pkce.codeChallengeMethod); // 'S256'
+```
+
+### Error Handling
+
+```typescript
+try {
+  const tokens = await oauth.login();
+} catch (error) {
+  switch (error.error) {
+    case 'access_denied':
+      // User denied authorization or closed popup
+      break;
+    case 'invalid_state':
+      // State mismatch (possible CSRF attack)
+      break;
+    case 'invalid_client':
+      // Client ID not found
+      break;
+    case 'invalid_scope':
+      // Requested scope not allowed
+      break;
+    default:
+      console.error(error.error_description);
+  }
+}
+```
+
+### Cancel Authorization
+
+```typescript
+// Cancel any ongoing authorization
+oauth.cancel();
+```

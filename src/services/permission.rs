@@ -112,4 +112,47 @@ impl PermissionService {
 
         Ok(())
     }
+
+    /// Remove a permission from a role
+    /// 
+    /// # Arguments
+    /// * `role_id` - The UUID of the role
+    /// * `permission_id` - The UUID of the permission to remove
+    /// 
+    /// # Returns
+    /// * `Ok(())` - Permission was successfully removed
+    /// * `Err(PermissionError::NotFound)` - If role or permission doesn't exist
+    pub async fn remove_permission_from_role(
+        &self,
+        role_id: Uuid,
+        permission_id: Uuid,
+    ) -> Result<(), PermissionError> {
+        let removed = self.role_permission_repo.remove_permission(role_id, permission_id).await?;
+        
+        if !removed {
+            return Err(PermissionError::NotFound);
+        }
+
+        Ok(())
+    }
+
+    /// Get all permissions assigned to a role
+    /// 
+    /// # Arguments
+    /// * `role_id` - The UUID of the role
+    /// 
+    /// # Returns
+    /// * `Ok(Vec<Permission>)` - List of permissions assigned to the role
+    pub async fn get_role_permissions(&self, role_id: Uuid) -> Result<Vec<Permission>, PermissionError> {
+        let role_permissions = self.role_permission_repo.find_by_role(role_id).await?;
+        
+        let mut permissions = Vec::new();
+        for rp in role_permissions {
+            if let Some(permission) = self.permission_repo.find_by_id(rp.permission_id).await? {
+                permissions.push(permission);
+            }
+        }
+        
+        Ok(permissions)
+    }
 }

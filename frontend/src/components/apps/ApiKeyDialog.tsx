@@ -109,10 +109,15 @@ export function ApiKeyDialog({
         toast.success('API key updated successfully');
         onApiKeyUpdated?.();
       } else {
+        // Convert date string to ISO 8601 datetime
+        const expiresAt = data.expires_at 
+          ? new Date(data.expires_at + 'T23:59:59Z').toISOString()
+          : undefined;
+        
         const newApiKey = await createApiKey(appId, {
           name: data.name,
           scopes: data.scopes,
-          expires_at: data.expires_at || undefined,
+          expires_at: expiresAt,
         });
         onApiKeyCreated?.(newApiKey);
       }

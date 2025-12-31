@@ -20,6 +20,9 @@ import {
   AppsPage,
   AppDetailPage,
   ConnectedAppsPage,
+  OAuthClientsPage,
+  OAuthAuthorizePage,
+  OAuthCallbackPage,
   AdminDashboardPage,
   AdminUsersPage,
   AdminUserDetailPage,
@@ -27,6 +30,7 @@ import {
   AdminAppDetailPage,
   AdminAuditLogsPage,
   AdminIpRulesPage,
+  AdminScopesPage,
 } from '@/pages';
 
 function AppContent() {
@@ -155,6 +159,26 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/oauth-clients"
+          element={
+            <ProtectedRoute>
+              <OAuthClientsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* OAuth Authorization (public but requires auth) */}
+        <Route
+          path="/oauth/authorize"
+          element={<OAuthAuthorizePage />}
+        />
+
+        {/* OAuth Callback (for popup flow) */}
+        <Route
+          path="/oauth/callback"
+          element={<OAuthCallbackPage />}
+        />
 
         {/* Default redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -179,6 +203,7 @@ function AppContent() {
         <Route path="apps/:appId" element={<AdminAppDetailPage />} />
         <Route path="audit-logs" element={<AdminAuditLogsPage />} />
         <Route path="ip-rules" element={<AdminIpRulesPage />} />
+        <Route path="scopes" element={<AdminScopesPage />} />
       </Route>
     </Routes>
   );

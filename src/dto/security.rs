@@ -163,6 +163,7 @@ pub struct AuditLogResponse {
     pub resource_type: String,
     pub resource_id: Option<Uuid>,
     pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub details: Option<serde_json::Value>,

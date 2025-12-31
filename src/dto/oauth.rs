@@ -375,6 +375,52 @@ pub struct ClientRegistrationResponse {
     pub is_internal: bool,
 }
 
+/// OAuth Client Info (without secret)
+///
+/// Used for listing clients.
+#[derive(Debug, Clone, Serialize)]
+pub struct OAuthClientInfo {
+    /// Internal UUID
+    pub id: String,
+    /// The client's public identifier
+    pub client_id: String,
+    /// Client name
+    pub name: String,
+    /// Redirect URIs
+    pub redirect_uris: Vec<String>,
+    /// Whether this is an internal app
+    pub is_internal: bool,
+    /// Whether the client is active
+    pub is_active: bool,
+    /// When the client was created
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// List OAuth Clients Response
+#[derive(Debug, Clone, Serialize)]
+pub struct ListOAuthClientsResponse {
+    /// List of OAuth clients
+    pub clients: Vec<OAuthClientInfo>,
+}
+
+/// Update OAuth Client Request
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateOAuthClientRequest {
+    /// Client name
+    pub name: Option<String>,
+    /// Redirect URIs
+    pub redirect_uris: Option<Vec<String>>,
+    /// Whether the client is active
+    pub is_active: Option<bool>,
+}
+
+/// Regenerate Secret Response
+#[derive(Debug, Clone, Serialize)]
+pub struct RegenerateClientSecretResponse {
+    /// The new client secret (only returned once)
+    pub client_secret: String,
+}
+
 // ============================================================================
 // Connected Apps DTOs (Requirement 9.1)
 // ============================================================================
@@ -431,6 +477,13 @@ pub struct ScopeInfo {
     pub code: String,
     /// Human-readable description
     pub description: String,
+}
+
+/// List Scopes Response
+#[derive(Debug, Clone, Serialize)]
+pub struct ListScopesResponse {
+    /// List of available scopes
+    pub scopes: Vec<ScopeInfo>,
 }
 
 /// Consent Decision

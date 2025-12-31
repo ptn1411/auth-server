@@ -1,5 +1,12 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Pagination } from "@/components/shared/Pagination";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -7,17 +14,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Pagination } from '@/components/shared/Pagination';
-import {
-  FileText,
-  Globe,
-  Clock,
-  Monitor,
-  Loader2,
-  User,
-} from 'lucide-react';
-import type { AuditLogsResponse } from '@/lib/auth-client';
+} from "@/components/ui/table";
+import type { AuditLogsResponse } from "@/lib/auth-client";
+import { Clock, FileText, Globe, Loader2, Monitor, User } from "lucide-react";
 
 interface AuditLogTableProps {
   auditLogs: AuditLogsResponse | null;
@@ -32,23 +31,25 @@ const formatDate = (dateString: string) => {
 
 const formatAction = (action: string) => {
   return action
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 };
 
-const getActionBadgeVariant = (action: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+const getActionBadgeVariant = (
+  action: string
+): "default" | "secondary" | "destructive" | "outline" => {
   const actionLower = action.toLowerCase();
-  if (actionLower.includes('login') || actionLower.includes('register')) {
-    return 'default';
+  if (actionLower.includes("login") || actionLower.includes("register")) {
+    return "default";
   }
-  if (actionLower.includes('logout') || actionLower.includes('revoke')) {
-    return 'secondary';
+  if (actionLower.includes("logout") || actionLower.includes("revoke")) {
+    return "secondary";
   }
-  if (actionLower.includes('delete') || actionLower.includes('fail')) {
-    return 'destructive';
+  if (actionLower.includes("delete") || actionLower.includes("fail")) {
+    return "destructive";
   }
-  return 'outline';
+  return "outline";
 };
 
 export function AuditLogTable({
@@ -99,7 +100,9 @@ export function AuditLogTable({
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-mono text-xs truncate max-w-[120px]" title={log.id}>
+                        <span
+                          className="font-mono text-xs truncate max-w-[120px]"
+                          title={log.id}>
                           {log.id.substring(0, 8)}...
                         </span>
                       </div>
@@ -112,17 +115,16 @@ export function AuditLogTable({
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Globe className="h-4 w-4 text-muted-foreground" />
-                        <span>{log.ip_address || 'Unknown'}</span>
+                        <span>{log.ip_address || "Unknown"}</span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Monitor className="h-4 w-4 text-muted-foreground" />
-                        <span 
-                          className="truncate max-w-[200px]" 
-                          title={log.user_agent || 'Unknown'}
-                        >
-                          {log.user_agent || 'Unknown'}
+                        <span
+                          className="truncate max-w-[200px]"
+                          title={log.user_agent || "Unknown"}>
+                          {log.user_agent || "Unknown"}
                         </span>
                       </div>
                     </TableCell>

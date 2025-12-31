@@ -231,7 +231,7 @@ impl OAuthClientRepository {
     }
 
     /// List all OAuth clients with pagination
-    pub async fn list_all(&self, page: u32, limit: u32) -> Result<Vec<OAuthClient>, OAuthError> {
+    pub async fn list_all_paginated(&self, page: u32, limit: u32) -> Result<Vec<OAuthClient>, OAuthError> {
         let offset = (page.saturating_sub(1)) * limit;
 
         let clients = sqlx::query_as::<_, OAuthClient>(
@@ -244,6 +244,22 @@ impl OAuthClientRepository {
         )
         .bind(limit)
         .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| OAuthError::ServerError(format!("Database error: {}", e)))?;
+
+        Ok(clients)
+    }
+
+    /// List all OAuth clients (no pagination)
+    pub async fn list_all(&self) -> Result<Vec<OAuthClient>, OAuthError> {
+        let clients = sqlx::query_as::<_, OAuthClient>(
+            r#"
+            SELECT id, client_id, client_secret_hash, name, redirect_uris, is_internal, is_active, created_at
+            FROM oauth_clients
+            ORDER BY created_at DESC
+            "#,
+        )
         .fetch_all(&self.pool)
         .await
         .map_err(|e| OAuthError::ServerError(format!("Database error: {}", e)))?;

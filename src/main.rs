@@ -31,6 +31,11 @@ use crate::handlers::{
         get_app_handler, get_user_handler, get_user_roles_handler, list_all_apps_handler,
         list_all_users_handler, update_app_handler, update_user_handler,
     },
+    admin_scope::{
+        list_all_scopes_handler, create_scope_handler, get_scope_handler,
+        update_scope_handler, activate_scope_handler, deactivate_scope_handler,
+        delete_scope_handler,
+    },
     app::{app_auth_handler, create_app_handler, list_my_apps_handler, regenerate_secret_handler},
     auth::{
         complete_mfa_login_handler, forgot_password_handler, login_handler, refresh_handler,
@@ -38,12 +43,16 @@ use crate::handlers::{
     },
     oauth::{
         authorize_callback_handler, authorize_handler, connected_apps_handler,
-        openid_configuration_handler, register_client_handler, revoke_consent_handler,
-        revoke_handler, token_handler, userinfo_handler,
+        delete_client_handler, list_clients_handler, list_scopes_handler,
+        openid_configuration_handler, regenerate_client_secret_handler,
+        register_client_handler, revoke_consent_handler, revoke_handler, token_handler,
+        update_client_handler, userinfo_handler,
     },
     permission::{
-        assign_permission_to_role_handler, create_permission_app_auth_handler,
-        create_permission_handler, list_permissions_app_auth_handler,
+        assign_permission_to_role_handler, assign_permission_to_role_user_handler,
+        create_permission_app_auth_handler, create_permission_handler,
+        get_role_permissions_handler, list_permissions_app_auth_handler,
+        remove_permission_from_role_handler,
     },
     role::{
         assign_role_handler, create_role_app_auth_handler, create_role_handler,
@@ -222,7 +231,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/authorize/callback", post(authorize_callback_handler))
         .route("/token", post(token_handler))
         .route("/revoke", post(revoke_handler))
-        .route("/clients", post(register_client_handler));
+        .route("/clients", post(register_client_handler))
+        .route("/scopes", get(list_scopes_handler));
+
+    // OAuth2 protected routes - requires JWT authentication
+    let oauth_jwt_protected_routes = Router::new()
+        .route("/clients", get(list_clients_handler))
+        .route("/clients/:id", put(update_client_handler))
+        .route("/clients/:id", delete(delete_client_handler))
+        .route("/clients/:id/secret", post(regenerate_client_secret_handler))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            jwt_auth_middleware,
+        ));
 
     // OAuth2 protected routes - OAuth2 token required
     // Requirement: 11.4
@@ -263,6 +284,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/apps", get(list_my_apps_handler).post(create_app_handler))
         .route("/apps/:app_id/roles", post(create_role_handler))
         .route("/apps/:app_id/permissions", post(create_permission_handler))
+        // Role-Permission management
+        .route("/apps/:app_id/roles/:role_id/permissions", post(assign_permission_to_role_user_handler))
+        .route("/apps/:app_id/roles/:role_id/permissions", get(get_role_permissions_handler))
+        .route("/apps/:app_id/roles/:role_id/permissions/:permission_id", delete(remove_permission_from_role_handler))
         // User role management
         .route("/apps/:app_id/users/:user_id/roles", post(assign_role_handler))
         .route("/apps/:app_id/users/:user_id/roles", get(get_user_roles_in_app_handler))
@@ -336,6 +361,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/ip-rules", get(list_ip_rules_handler))
         .route("/ip-rules/check", get(check_ip_handler))
         .route("/ip-rules/:rule_id", delete(delete_ip_rule_handler))
+        // OAuth Scopes management (admin only)
+        .route("/scopes", get(list_all_scopes_handler))
+        .route("/scopes", post(create_scope_handler))
+        .route("/scopes/:scope_id", get(get_scope_handler))
+        .route("/scopes/:scope_id", put(update_scope_handler))
+        .route("/scopes/:scope_id", delete(delete_scope_handler))
+        .route("/scopes/:scope_id/activate", post(activate_scope_handler))
+        .route("/scopes/:scope_id/deactivate", post(deactivate_scope_handler))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             jwt_auth_middleware,
@@ -356,6 +389,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/admin", admin_routes)
         // OAuth2 routes (Requirements 11.1-11.5)
         .nest("/oauth", oauth_public_routes)
+        .nest("/oauth", oauth_jwt_protected_routes)
         .nest("/oauth", oauth_protected_routes)
         .nest("/.well-known", wellknown_routes)
         // Account management routes (Requirements 9.1-9.3)

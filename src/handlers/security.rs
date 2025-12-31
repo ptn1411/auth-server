@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State, Path},
+    http::HeaderMap,
     Extension, Json,
 };
 use uuid::Uuid;
@@ -22,6 +23,37 @@ use crate::services::{
 use crate::utils::jwt::Claims;
 
 // ============================================================================
+// Helper Functions for Request Context
+// ============================================================================
+
+/// Extract client IP address from headers
+fn extract_ip_address(headers: &HeaderMap) -> Option<String> {
+    // Check X-Forwarded-For first (for proxied requests)
+    if let Some(forwarded) = headers.get("x-forwarded-for") {
+        if let Ok(value) = forwarded.to_str() {
+            return Some(value.split(',').next()?.trim().to_string());
+        }
+    }
+
+    // Check X-Real-IP
+    if let Some(real_ip) = headers.get("x-real-ip") {
+        if let Ok(value) = real_ip.to_str() {
+            return Some(value.to_string());
+        }
+    }
+
+    None
+}
+
+/// Extract User-Agent from headers
+fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
+// ============================================================================
 // Logout Handler
 // ============================================================================
 
@@ -30,12 +62,16 @@ pub async fn logout_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Extension(access_token): Extension<AccessToken>,
+    headers: HeaderMap,
     Json(req): Json<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, AuthError> {
     let user_id = claims.user_id()?;
     let session_service = SessionService::new(state.pool.clone(), 7);
     let token_revocation_service = TokenRevocationService::new(state.pool.clone());
     let audit_service = AuditService::new(state.pool.clone());
+
+    let ip_address = extract_ip_address(&headers);
+    let user_agent = extract_user_agent(&headers);
 
     // Revoke the current access token
     let _ = token_revocation_service
@@ -61,8 +97,8 @@ pub async fn logout_handler(
         .log_auth_event(
             Some(user_id),
             AuditAction::Logout,
-            None,
-            None,
+            ip_address.as_deref(),
+            user_agent.as_deref(),
             Some(serde_json::json!({ "all_sessions": req.all_sessions })),
             true,
         )
@@ -113,11 +149,15 @@ pub async fn list_sessions_handler(
 pub async fn revoke_session_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     Json(req): Json<RevokeSessionRequest>,
 ) -> Result<Json<RevokeSessionsResponse>, AuthError> {
     let user_id = claims.user_id()?;
     let session_service = SessionService::new(state.pool.clone(), 7);
     let audit_service = AuditService::new(state.pool.clone());
+
+    let ip_address = extract_ip_address(&headers);
+    let user_agent = extract_user_agent(&headers);
 
     session_service
         .revoke_session(req.session_id, user_id)
@@ -129,8 +169,8 @@ pub async fn revoke_session_handler(
             user_id,
             AuditAction::SessionRevoked,
             Some(req.session_id),
-            None,
-            None,
+            ip_address.as_deref(),
+            user_agent.as_deref(),
             None,
         )
         .await;
@@ -145,10 +185,14 @@ pub async fn revoke_session_handler(
 pub async fn revoke_other_sessions_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
 ) -> Result<Json<RevokeSessionsResponse>, AuthError> {
     let user_id = claims.user_id()?;
     let session_service = SessionService::new(state.pool.clone(), 7);
     let audit_service = AuditService::new(state.pool.clone());
+
+    let ip_address = extract_ip_address(&headers);
+    let user_agent = extract_user_agent(&headers);
 
     // Note: In a real implementation, you'd pass the current session ID
     let revoked_count = session_service.revoke_all_sessions(user_id).await?;
@@ -159,8 +203,8 @@ pub async fn revoke_other_sessions_handler(
             user_id,
             AuditAction::SessionRevoked,
             None,
-            None,
-            None,
+            ip_address.as_deref(),
+            user_agent.as_deref(),
             Some(serde_json::json!({ "revoked_all": true })),
         )
         .await;
@@ -200,11 +244,15 @@ pub async fn setup_totp_handler(
 pub async fn verify_totp_setup_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     Json(req): Json<VerifyTotpSetupRequest>,
 ) -> Result<Json<VerifyTotpSetupResponse>, AuthError> {
     let user_id = claims.user_id()?;
     let mfa_service = MfaService::new(state.pool.clone(), "AuthServer".to_string());
     let audit_service = AuditService::new(state.pool.clone());
+
+    let ip_address = extract_ip_address(&headers);
+    let user_agent = extract_user_agent(&headers);
 
     let backup_codes = mfa_service
         .verify_totp_setup(user_id, req.method_id, &req.code)
@@ -219,7 +267,7 @@ pub async fn verify_totp_setup_handler(
 
     // Log MFA enabled
     let _ = audit_service
-        .log_mfa_event(user_id, AuditAction::MfaEnabled, None, None, None, true)
+        .log_mfa_event(user_id, AuditAction::MfaEnabled, ip_address.as_deref(), user_agent.as_deref(), None, true)
         .await;
 
     Ok(Json(VerifyTotpSetupResponse {
@@ -263,11 +311,15 @@ pub async fn list_mfa_methods_handler(
 pub async fn disable_mfa_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     Json(req): Json<DisableMfaRequest>,
 ) -> Result<Json<crate::dto::MessageResponse>, AuthError> {
     let user_id = claims.user_id()?;
     let mfa_service = MfaService::new(state.pool.clone(), "AuthServer".to_string());
     let audit_service = AuditService::new(state.pool.clone());
+
+    let ip_address = extract_ip_address(&headers);
+    let user_agent = extract_user_agent(&headers);
 
     // Verify password first (would need to implement)
     // For now, just disable MFA
@@ -287,7 +339,7 @@ pub async fn disable_mfa_handler(
 
     // Log MFA disabled
     let _ = audit_service
-        .log_mfa_event(user_id, AuditAction::MfaDisabled, None, None, None, true)
+        .log_mfa_event(user_id, AuditAction::MfaDisabled, ip_address.as_deref(), user_agent.as_deref(), None, true)
         .await;
 
     Ok(Json(crate::dto::MessageResponse {
@@ -340,6 +392,7 @@ pub async fn get_audit_logs_handler(
             resource_type: l.resource_type,
             resource_id: l.resource_id,
             ip_address: l.ip_address,
+            user_agent: l.user_agent,
             status: l.status,
             created_at: l.created_at,
             details: l.details,
@@ -380,6 +433,7 @@ pub async fn get_all_audit_logs_handler(
             resource_type: l.resource_type,
             resource_id: l.resource_id,
             ip_address: l.ip_address,
+            user_agent: l.user_agent,
             status: l.status,
             created_at: l.created_at,
             details: l.details,
@@ -402,11 +456,15 @@ pub async fn get_all_audit_logs_handler(
 pub async fn unlock_account_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<crate::dto::MessageResponse>, AuthError> {
     let actor_id = claims.user_id()?;
     let lockout_service = AccountLockoutService::new(state.pool.clone(), LockoutConfig::default());
     let audit_service = AuditService::new(state.pool.clone());
+
+    let ip_address = extract_ip_address(&headers);
+    let user_agent = extract_user_agent(&headers);
 
     lockout_service.unlock_account(user_id).await?;
 
@@ -416,8 +474,8 @@ pub async fn unlock_account_handler(
             actor_id,
             AuditAction::AccountUnlocked,
             user_id,
-            None,
-            None,
+            ip_address.as_deref(),
+            user_agent.as_deref(),
             None,
         )
         .await;

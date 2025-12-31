@@ -481,3 +481,70 @@ export interface PasskeyAuthResponse {
 export interface RenameCredentialRequest {
   name: string;
 }
+
+// ============ OAuth Scope Types ============
+
+export interface OAuthScope {
+  id: string;
+  code: string;
+  description: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ListScopesResponse {
+  scopes: OAuthScope[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface CreateScopeRequest {
+  code: string;
+  description: string;
+}
+
+export interface UpdateScopeRequest {
+  description: string;
+}
+
+// ============ OAuth Client Types ============
+
+export interface OAuthClientInfo {
+  id: string;
+  client_id: string;
+  name: string;
+  redirect_uris: string[];
+  is_internal: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface OAuthClientWithSecret extends OAuthClientInfo {
+  client_secret: string;
+}
+
+export interface CreateOAuthClientRequest {
+  name: string;
+  redirect_uris: string[];
+  is_internal?: boolean;
+}
+
+export interface UpdateOAuthClientRequest {
+  name?: string;
+  redirect_uris?: string[];
+  is_active?: boolean;
+}
+
+export interface ListOAuthClientsResponse {
+  clients: OAuthClientInfo[];
+}
+
+export interface PublicScopeInfo {
+  code: string;
+  description: string;
+}
+
+export interface ListPublicScopesResponse {
+  scopes: PublicScopeInfo[];
+}

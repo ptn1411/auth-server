@@ -13,6 +13,11 @@ export { AppsPage } from './AppsPage';
 export { AppDetailPage } from './AppDetailPage';
 export { ConnectedAppsPage } from './ConnectedAppsPage';
 
+// OAuth pages
+export { OAuthClientsPage } from './OAuthClientsPage';
+export { OAuthAuthorizePage } from './OAuthAuthorizePage';
+export { OAuthCallbackPage } from './OAuthCallbackPage';
+
 // Admin pages
 export {
   AdminDashboardPage,
@@ -22,4 +27,5 @@ export {
   AdminAppDetailPage,
   AdminAuditLogsPage,
   AdminIpRulesPage,
+  AdminScopesPage,
 } from './admin';

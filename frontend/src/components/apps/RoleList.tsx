@@ -11,22 +11,39 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CreateRoleDialog } from './CreateRoleDialog';
-import { Plus, Shield, Loader2 } from 'lucide-react';
-import type { RoleResponse } from '@/lib/auth-client';
+import { RolePermissionsDialog } from './RolePermissionsDialog';
+import { Plus, Shield, Loader2, Settings } from 'lucide-react';
+import type { RoleResponse, PermissionResponse } from '@/lib/auth-client';
 
 interface RoleListProps {
   appId: string;
   roles?: RoleResponse[];
+  permissions?: PermissionResponse[];
   isLoading?: boolean;
   onRoleCreated?: () => void;
+  onPermissionsChanged?: () => void;
 }
 
-export function RoleList({ appId, roles = [], isLoading = false, onRoleCreated }: RoleListProps) {
+export function RoleList({ 
+  appId, 
+  roles = [], 
+  permissions = [],
+  isLoading = false, 
+  onRoleCreated,
+  onPermissionsChanged,
+}: RoleListProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<RoleResponse | null>(null);
 
   const handleRoleCreated = () => {
     setCreateDialogOpen(false);
     onRoleCreated?.();
+  };
+
+  const handleManagePermissions = (role: RoleResponse) => {
+    setSelectedRole(role);
+    setPermissionsDialogOpen(true);
   };
 
   return (
@@ -40,7 +57,7 @@ export function RoleList({ appId, roles = [], isLoading = false, onRoleCreated }
                 Roles
               </CardTitle>
               <CardDescription>
-                Manage roles for this application
+                Manage roles and their permissions for this application
               </CardDescription>
             </div>
             <Button onClick={() => setCreateDialogOpen(true)} size="sm">
@@ -72,6 +89,7 @@ export function RoleList({ appId, roles = [], isLoading = false, onRoleCreated }
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>ID</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -82,6 +100,16 @@ export function RoleList({ appId, roles = [], isLoading = false, onRoleCreated }
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {role.id}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleManagePermissions(role)}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Permissions
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -96,6 +124,15 @@ export function RoleList({ appId, roles = [], isLoading = false, onRoleCreated }
         onOpenChange={setCreateDialogOpen}
         appId={appId}
         onRoleCreated={handleRoleCreated}
+      />
+
+      <RolePermissionsDialog
+        open={permissionsDialogOpen}
+        onOpenChange={setPermissionsDialogOpen}
+        appId={appId}
+        role={selectedRole}
+        allPermissions={permissions}
+        onPermissionsChanged={onPermissionsChanged}
       />
     </>
   );
