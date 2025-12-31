@@ -30,11 +30,16 @@
       </div>
       <div class="form-group">
         <label for="scopes">Scopes (space-separated)</label>
-        <input type="text" id="scopes" value="openid profile email" placeholder="openid profile email">
+        <input type="text" id="scopes" value="openid profile email offline_access" placeholder="openid profile email">
         <p class="scope-hint">Available: openid, profile, email, profile.read, email.read, offline_access</p>
-        <button type="button" id="fetch-scopes-btn" class="btn btn-secondary btn-small" style="margin-top: 8px;">
-          Fetch Available Scopes
-        </button>
+        <div class="btn-group-small">
+          <button type="button" id="fetch-scopes-btn" class="btn btn-secondary btn-small">
+            Fetch Scopes
+          </button>
+          <button type="button" id="fetch-oidc-btn" class="btn btn-secondary btn-small">
+            Fetch OpenID Config
+          </button>
+        </div>
       </div>
     </section>
 
@@ -62,6 +67,10 @@
           <div class="token-value" id="refresh-token">-</div>
         </div>
         <div class="token-item">
+          <label>ID Token</label>
+          <div class="token-value" id="id-token">-</div>
+        </div>
+        <div class="token-item">
           <label>Token Type</label>
           <div class="token-value" id="token-type">-</div>
         </div>
@@ -79,6 +88,18 @@
           <span class="btn-icon">👤</span>
           Get User Info
         </button>
+        <button id="decode-btn" class="btn btn-secondary">
+          <span class="btn-icon">🔍</span>
+          Decode JWT
+        </button>
+        <button id="refresh-btn" class="btn btn-secondary">
+          <span class="btn-icon">🔄</span>
+          Refresh Token
+        </button>
+        <button id="revoke-btn" class="btn btn-warning">
+          <span class="btn-icon">🚫</span>
+          Revoke Token
+        </button>
         <button id="logout-btn" class="btn btn-danger">
           <span class="btn-icon">🚪</span>
           Logout
@@ -92,11 +113,69 @@
       <pre id="userinfo-data"></pre>
     </section>
 
+    <!-- Decoded Token Section -->
+    <section class="card hidden" id="decoded-section">
+      <h2>🔍 Decoded Tokens</h2>
+      <pre id="decoded-data"></pre>
+    </section>
+
+    <!-- OpenID Configuration Section -->
+    <section class="card hidden" id="oidc-section">
+      <h2>📋 OpenID Configuration</h2>
+      <pre id="oidc-data"></pre>
+    </section>
+
     <!-- Debug Section -->
     <section class="card">
       <h2>📋 Debug Log</h2>
       <div id="debug-log" class="debug-log"></div>
       <button id="clear-log-btn" class="btn btn-secondary btn-small">Clear Log</button>
+    </section>
+
+    <!-- API Reference -->
+    <section class="card">
+      <h2>📚 OAuth2 Endpoints Reference</h2>
+      <table class="api-table">
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Method</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/oauth/authorize</code></td>
+            <td>GET</td>
+            <td>Start authorization flow</td>
+          </tr>
+          <tr>
+            <td><code>/oauth/token</code></td>
+            <td>POST</td>
+            <td>Exchange code for tokens / Refresh token</td>
+          </tr>
+          <tr>
+            <td><code>/oauth/userinfo</code></td>
+            <td>GET</td>
+            <td>Get user information</td>
+          </tr>
+          <tr>
+            <td><code>/oauth/revoke</code></td>
+            <td>POST</td>
+            <td>Revoke token</td>
+          </tr>
+          <tr>
+            <td><code>/oauth/scopes</code></td>
+            <td>GET</td>
+            <td>List available scopes</td>
+          </tr>
+          <tr>
+            <td><code>/.well-known/openid-configuration</code></td>
+            <td>GET</td>
+            <td>OpenID Connect discovery</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   </div>
 

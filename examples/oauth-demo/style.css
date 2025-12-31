@@ -5,7 +5,8 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
   padding: 20px;
@@ -26,7 +27,7 @@ header {
 header h1 {
   font-size: 2.5rem;
   margin-bottom: 10px;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 header .subtitle {
@@ -39,7 +40,7 @@ header .subtitle {
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 20px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
 }
 
 .card h2 {
@@ -93,7 +94,7 @@ header .subtitle {
 
 .btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .btn:active {
@@ -188,7 +189,7 @@ header .subtitle {
 }
 
 .token-value {
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: "Monaco", "Menlo", monospace;
   font-size: 0.85rem;
   word-break: break-all;
   color: #333;
@@ -199,7 +200,7 @@ header .subtitle {
   color: #d4d4d4;
   padding: 16px;
   border-radius: 8px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: "Monaco", "Menlo", monospace;
   font-size: 0.8rem;
   max-height: 300px;
   overflow-y: auto;
@@ -253,15 +254,64 @@ header .subtitle {
   margin-top: 4px;
 }
 
+.btn-warning {
+  background: #f39c12;
+  color: white;
+}
+
+.btn-group-small {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.api-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.api-table th,
+.api-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.api-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #555;
+}
+
+.api-table code {
+  background: #e9ecef;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+#decoded-data,
+#oidc-data {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 @media (max-width: 600px) {
   header h1 {
     font-size: 1.8rem;
   }
-  
+
   .btn-group {
     flex-direction: column;
   }
-  
+
   .btn {
     width: 100%;
   }
