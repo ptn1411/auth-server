@@ -151,6 +151,46 @@ impl AppRepository {
         Ok(user)
     }
 
+    /// List apps owned by a user with pagination
+    pub async fn list_by_owner(&self, owner_id: Uuid, page: u32, limit: u32) -> Result<Vec<App>, AppError> {
+        let offset = (page.saturating_sub(1)) * limit;
+
+        let apps = sqlx::query_as::<_, App>(
+            r#"
+            SELECT id, code, name, owner_id, secret_hash
+            FROM apps
+            WHERE owner_id = ?
+            ORDER BY code ASC
+            LIMIT ? OFFSET ?
+            "#,
+        )
+        .bind(owner_id.to_string())
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalError(e.into()))?;
+
+        Ok(apps)
+    }
+
+    /// Count apps owned by a user
+    pub async fn count_by_owner(&self, owner_id: Uuid) -> Result<u64, AppError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) as count
+            FROM apps
+            WHERE owner_id = ?
+            "#,
+        )
+        .bind(owner_id.to_string())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalError(e.into()))?;
+
+        Ok(count as u64)
+    }
+
     /// List all apps with pagination (for admin)
     /// Requirements: 7.4
     pub async fn list_all(&self, page: u32, limit: u32) -> Result<Vec<App>, AppError> {

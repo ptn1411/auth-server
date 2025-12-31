@@ -27,14 +27,14 @@ import type { ApiKeyResponse, ApiKeyWithSecretResponse } from '@/lib/auth-client
 
 interface ApiKeyListProps {
   appId: string;
-  apiKeys: ApiKeyResponse[];
+  apiKeys?: ApiKeyResponse[];
   isLoading?: boolean;
   onApiKeyCreated?: () => void;
 }
 
 export function ApiKeyList({
   appId,
-  apiKeys,
+  apiKeys = [],
   isLoading = false,
   onApiKeyCreated,
 }: ApiKeyListProps) {

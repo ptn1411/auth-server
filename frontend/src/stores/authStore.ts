@@ -185,6 +185,9 @@ export const useAuthStore = create<AuthStore>()(
         return;
       }
 
+      // Set refresh token in SDK for auto-refresh capability
+      authClient.setTokens('', refreshToken);
+
       // Try to refresh access token using stored refresh token
       try {
         const response = await authClient.refresh({ refresh_token: refreshToken });

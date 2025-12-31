@@ -16,14 +16,14 @@ import type { PermissionResponse } from '@/lib/auth-client';
 
 interface PermissionListProps {
   appId: string;
-  permissions: PermissionResponse[];
+  permissions?: PermissionResponse[];
   isLoading?: boolean;
   onPermissionCreated?: () => void;
 }
 
 export function PermissionList({
   appId,
-  permissions,
+  permissions = [],
   isLoading = false,
   onPermissionCreated,
 }: PermissionListProps) {

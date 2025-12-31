@@ -1,10 +1,9 @@
 use rand::Rng;
-use sha2::{Digest, Sha256};
 use sqlx::MySqlPool;
 use uuid::Uuid;
 
 use crate::error::AuthError;
-use crate::models::{MfaMethodType, UserMfaMethod};
+use crate::models::UserMfaMethod;
 use crate::repositories::MfaRepository;
 use crate::utils::password::hash_token;
 
@@ -74,11 +73,11 @@ impl MfaService {
             .repo
             .find_method_by_id(method_id)
             .await?
-            .ok_or(AuthError::InvalidToken)?;
+            .ok_or(AuthError::InvalidMfaCode)?;
 
         // Verify it belongs to the user and is TOTP
         if method.user_id != user_id || method.method_type != "totp" {
-            return Err(AuthError::InvalidToken);
+            return Err(AuthError::InvalidMfaCode);
         }
 
         // Get the secret
@@ -88,7 +87,7 @@ impl MfaService {
 
         // Verify the code
         if !verify_totp_code(&secret, code)? {
-            return Err(AuthError::InvalidToken);
+            return Err(AuthError::InvalidMfaCode);
         }
 
         // Mark as verified
@@ -107,10 +106,10 @@ impl MfaService {
             .repo
             .get_primary_method(user_id)
             .await?
-            .ok_or(AuthError::InvalidToken)?;
+            .ok_or(AuthError::InvalidMfaCode)?;
 
         if method.method_type != "totp" {
-            return Err(AuthError::InvalidToken);
+            return Err(AuthError::InvalidMfaCode);
         }
 
         let secret = method
@@ -307,32 +306,19 @@ fn verify_totp_code(secret_base32: &str, code: &str) -> Result<bool, AuthError> 
 
 /// Generate TOTP code for a given counter
 fn generate_totp(secret: &[u8], counter: u64) -> Result<String, AuthError> {
-    use sha2::Sha256;
+    use hmac::{Hmac, Mac};
+    use sha1::Sha1;
     use std::convert::TryInto;
 
-    // HMAC-SHA256
+    type HmacSha1 = Hmac<Sha1>;
+
+    // HMAC-SHA1 (RFC 6238 standard)
     let counter_bytes = counter.to_be_bytes();
     
-    // Simple HMAC implementation
-    let mut ipad = vec![0x36u8; 64];
-    let mut opad = vec![0x5cu8; 64];
-    
-    for (i, &byte) in secret.iter().enumerate() {
-        if i < 64 {
-            ipad[i] ^= byte;
-            opad[i] ^= byte;
-        }
-    }
-    
-    let mut hasher = Sha256::new();
-    hasher.update(&ipad);
-    hasher.update(&counter_bytes);
-    let inner_hash = hasher.finalize();
-    
-    let mut hasher = Sha256::new();
-    hasher.update(&opad);
-    hasher.update(&inner_hash);
-    let hmac_result = hasher.finalize();
+    let mut mac = HmacSha1::new_from_slice(secret)
+        .map_err(|e| AuthError::InternalError(anyhow::anyhow!("HMAC error: {}", e)))?;
+    mac.update(&counter_bytes);
+    let hmac_result = mac.finalize().into_bytes();
 
     // Dynamic truncation
     let offset = (hmac_result[hmac_result.len() - 1] & 0x0F) as usize;

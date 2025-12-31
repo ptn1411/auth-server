@@ -26,14 +26,14 @@ import type { WebhookResponse, WebhookWithSecretResponse } from '@/lib/auth-clie
 
 interface WebhookListProps {
   appId: string;
-  webhooks: WebhookResponse[];
+  webhooks?: WebhookResponse[];
   isLoading?: boolean;
   onWebhookCreated?: () => void;
 }
 
 export function WebhookList({
   appId,
-  webhooks,
+  webhooks = [],
   isLoading = false,
   onWebhookCreated,
 }: WebhookListProps) {

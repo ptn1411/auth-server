@@ -31,7 +31,7 @@ use crate::handlers::{
         get_app_handler, get_user_handler, get_user_roles_handler, list_all_apps_handler,
         list_all_users_handler, update_app_handler, update_user_handler,
     },
-    app::{app_auth_handler, create_app_handler, regenerate_secret_handler},
+    app::{app_auth_handler, create_app_handler, list_my_apps_handler, regenerate_secret_handler},
     auth::{
         complete_mfa_login_handler, forgot_password_handler, login_handler, refresh_handler,
         register_handler, reset_password_handler,
@@ -260,7 +260,7 @@ pub fn create_router(state: AppState) -> Router {
 
     // Protected app management routes - JWT authentication required
     let protected_app_routes = Router::new()
-        .route("/apps", post(create_app_handler))
+        .route("/apps", get(list_my_apps_handler).post(create_app_handler))
         .route("/apps/:app_id/roles", post(create_role_handler))
         .route("/apps/:app_id/permissions", post(create_permission_handler))
         // User role management

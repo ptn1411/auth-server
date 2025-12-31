@@ -16,12 +16,12 @@ import type { RoleResponse } from '@/lib/auth-client';
 
 interface RoleListProps {
   appId: string;
-  roles: RoleResponse[];
+  roles?: RoleResponse[];
   isLoading?: boolean;
   onRoleCreated?: () => void;
 }
 
-export function RoleList({ appId, roles, isLoading = false, onRoleCreated }: RoleListProps) {
+export function RoleList({ appId, roles = [], isLoading = false, onRoleCreated }: RoleListProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const handleRoleCreated = () => {

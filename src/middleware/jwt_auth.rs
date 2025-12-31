@@ -53,10 +53,12 @@ pub async fn jwt_auth_middleware(
             if let Some(token) = header.strip_prefix("Bearer ") {
                 token.trim().to_string()
             } else {
+                tracing::warn!("Invalid Authorization header format: {}", header);
                 return Err(AuthError::InvalidToken);
             }
         }
         None => {
+            tracing::warn!("Missing Authorization header for path: {}", request.uri().path());
             return Err(AuthError::InvalidToken);
         }
     };

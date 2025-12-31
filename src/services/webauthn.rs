@@ -316,7 +316,9 @@ impl WebAuthnService {
         let new_counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
 
         // Verify counter (prevent replay attacks)
-        if new_counter <= credential.counter {
+        // Allow counter = 0 for first authentication, otherwise must be strictly greater
+        // Some authenticators (like platform authenticators) may not increment counter
+        if credential.counter > 0 && new_counter != 0 && new_counter <= credential.counter {
             return Err(AppError::ValidationError("Invalid counter - possible replay attack".into()));
         }
 

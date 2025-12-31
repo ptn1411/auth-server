@@ -108,11 +108,8 @@ export const useAppsStore = create<AppsStore>()((set, get) => ({
   fetchApps: async () => {
     set({ isLoading: true, error: null });
     try {
-      // Note: SDK currently doesn't have a method to list user's own apps
-      // This will need to be added to the SDK and backend
-      // For now, we'll use admin endpoint if user is admin, otherwise empty array
-      // TODO: Add GET /apps endpoint to backend and SDK
-      set({ apps: [], isLoading: false });
+      const response = await authClient.listMyApps();
+      set({ apps: response.data, isLoading: false });
     } catch (error) {
       set({ error: handleApiError(error), isLoading: false });
       throw error;

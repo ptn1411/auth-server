@@ -66,6 +66,8 @@ export class AuthServerClient {
   private timeout: number;
   private accessToken?: string;
   private refreshToken?: string;
+  private isRefreshing = false;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor(config: AuthServerConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
@@ -76,16 +78,52 @@ export class AuthServerClient {
 
   setTokens(accessToken: string, refreshToken?: string): void {
     this.accessToken = accessToken;
-    this.refreshToken = refreshToken;
+    if (refreshToken) {
+      this.refreshToken = refreshToken;
+    }
   }
 
   getAccessToken(): string | undefined {
     return this.accessToken;
   }
 
+  getRefreshToken(): string | undefined {
+    return this.refreshToken;
+  }
+
   clearTokens(): void {
     this.accessToken = undefined;
     this.refreshToken = undefined;
+  }
+
+  // Auto-refresh access token
+  private async tryRefreshToken(): Promise<boolean> {
+    if (!this.refreshToken) return false;
+    
+    // Prevent multiple simultaneous refresh requests
+    if (this.isRefreshing && this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.isRefreshing = true;
+    this.refreshPromise = (async () => {
+      try {
+        const response = await this.request<RefreshResponse>(
+          'POST', '/auth/refresh', 
+          { body: { refresh_token: this.refreshToken }, auth: false }
+        );
+        this.accessToken = response.access_token;
+        return true;
+      } catch {
+        this.clearTokens();
+        return false;
+      } finally {
+        this.isRefreshing = false;
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   // ============ HTTP Methods ============
@@ -98,6 +136,7 @@ export class AuthServerClient {
       query?: Record<string, string | number | boolean | undefined>;
       auth?: boolean;
       appAuth?: boolean;
+      _retry?: boolean;
     } = {}
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
@@ -133,6 +172,17 @@ export class AuthServerClient {
 
       if (!response.ok) {
         const error = await response.json() as ApiError;
+        
+        // Auto-refresh on 401 if we have a refresh token and haven't retried yet
+        // Only refresh for invalid_token errors, not for invalid_mfa_code
+        if (response.status === 401 && error.error === 'invalid_token' && options.auth !== false && !options._retry && this.refreshToken) {
+          const refreshed = await this.tryRefreshToken();
+          if (refreshed) {
+            // Retry the request with new access token
+            return this.request<T>(method, path, { ...options, _retry: true });
+          }
+        }
+        
         throw new AuthServerError(error.error, response.status, error.message);
       }
 
@@ -292,6 +342,10 @@ export class AuthServerClient {
   }
 
   // ============ App Management API ============
+
+  async listMyApps(params?: PaginationParams): Promise<PaginatedResponse<AppResponse>> {
+    return this.get('/apps', params);
+  }
 
   async createApp(data: CreateAppRequest): Promise<AppResponse> {
     return this.post('/apps', data);

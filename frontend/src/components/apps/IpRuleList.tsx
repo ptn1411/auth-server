@@ -19,14 +19,14 @@ import type { IpRuleResponse } from '@/lib/auth-client';
 
 interface IpRuleListProps {
   appId: string;
-  ipRules: IpRuleResponse[];
+  ipRules?: IpRuleResponse[];
   isLoading?: boolean;
   onIpRuleCreated?: () => void;
 }
 
 export function IpRuleList({
   appId,
-  ipRules,
+  ipRules = [],
   isLoading = false,
   onIpRuleCreated,
 }: IpRuleListProps) {

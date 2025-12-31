@@ -27,7 +27,7 @@ import type { AppUser, AppUsersResponse, RoleResponse } from '@/lib/auth-client'
 interface AppUserListProps {
   appId: string;
   users: AppUsersResponse | null;
-  roles: RoleResponse[];
+  roles?: RoleResponse[];
   isLoading?: boolean;
   onPageChange: (page: number) => void;
 }
@@ -35,7 +35,7 @@ interface AppUserListProps {
 export function AppUserList({
   appId,
   users,
-  roles,
+  roles = [],
   isLoading = false,
   onPageChange,
 }: AppUserListProps) {
@@ -134,7 +134,7 @@ export function AppUserList({
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : !users || users.users.length === 0 ? (
+          ) : !users || !users.users || users.users.length === 0 ? (
             <div className="text-center py-8">
               <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No users yet</h3>

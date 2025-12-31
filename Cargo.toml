@@ -19,6 +19,7 @@ bcrypt = "0.15"
 
 # Cryptography
 sha2 = "0.10"
+sha1 = "0.10"
 base64 = "0.22"
 hex = "0.4"
 hmac = "0.12"

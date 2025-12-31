@@ -18,7 +18,8 @@ use crate::repositories::UserRepository;
 fn get_webauthn_service(state: &AppState) -> WebAuthnService {
     let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
     let rp_name = std::env::var("WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Auth Server".to_string());
-    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    // Default to frontend origin for development
+    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:5173".to_string());
     
     WebAuthnService::new(state.pool.clone(), rp_id, rp_name, rp_origin)
 }
@@ -52,23 +53,31 @@ pub async fn finish_registration_handler(
     Json(req): Json<FinishRegistrationRequest>,
 ) -> Result<(StatusCode, Json<PasskeyResponse>), AppError> {
     let user_id = claims.user_id()?;
+    tracing::info!("finish_registration_handler called for user: {}", user_id);
 
     let service = get_webauthn_service(&state);
     let response = RegistrationResponse {
-        id: req.id,
-        raw_id: req.raw_id,
+        id: req.id.clone(),
+        raw_id: req.raw_id.clone(),
         response: crate::services::AuthenticatorAttestationResponse {
-            client_data_json: req.response.client_data_json,
-            attestation_object: req.response.attestation_object,
+            client_data_json: req.response.client_data_json.clone(),
+            attestation_object: req.response.attestation_object.clone(),
         },
-        cred_type: req.cred_type,
+        cred_type: req.cred_type.clone(),
     };
 
-    let credential = service.finish_registration(
+    tracing::info!("Calling finish_registration with id: {}", req.id);
+    let credential = match service.finish_registration(
         user_id,
         response,
         req.device_name.as_deref(),
-    ).await?;
+    ).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("finish_registration failed: {:?}", e);
+            return Err(e);
+        }
+    };
 
     Ok((
         StatusCode::CREATED,

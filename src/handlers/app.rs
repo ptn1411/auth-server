@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -7,11 +7,11 @@ use uuid::Uuid;
 
 use crate::config::AppState;
 use crate::dto::{
-    AppAuthRequest, AppAuthResponse, CreateAppRequest, CreateAppWithSecretResponse,
-    RegenerateSecretResponse,
+    AppAuthRequest, AppAuthResponse, AppResponse, CreateAppRequest, CreateAppWithSecretResponse,
+    PaginatedResponse, PaginationQuery, RegenerateSecretResponse,
 };
 use crate::error::{AppError, AuthError};
-use crate::repositories::UserRepository;
+use crate::repositories::{AppRepository, UserRepository};
 use crate::services::AppService;
 use crate::utils::jwt::Claims;
 
@@ -43,6 +43,37 @@ pub async fn create_app_handler(
             secret, // Plain-text secret, returned only once (Requirement 1.2)
         }),
     ))
+}
+
+/// GET /apps - List apps owned by the current user
+pub async fn list_my_apps_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Query(pagination): Query<PaginationQuery>,
+) -> Result<Json<PaginatedResponse<AppResponse>>, AppError> {
+    let owner_id = claims.user_id()
+        .map_err(|_| AppError::InternalError(anyhow::anyhow!("Invalid user ID in token")))?;
+    
+    let app_repo = AppRepository::new(state.pool.clone());
+    
+    let page = pagination.page;
+    let limit = pagination.limit.min(100);
+    
+    let apps = app_repo.list_by_owner(owner_id, page, limit).await?;
+    let total = app_repo.count_by_owner(owner_id).await?;
+    
+    let data = apps.into_iter().map(|app| AppResponse {
+        id: app.id,
+        code: app.code,
+        name: app.name,
+    }).collect();
+    
+    Ok(Json(PaginatedResponse {
+        data,
+        page,
+        limit,
+        total,
+    }))
 }
 
 /// POST /apps/auth - Authenticate app using App ID and Secret

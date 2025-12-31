@@ -94,7 +94,8 @@ pub async fn list_sessions_handler(
             device_name: s.device_name,
             device_type: s.device_type,
             ip_address: s.ip_address,
-            last_active_at: s.last_active_at,
+            user_agent: s.user_agent,
+            last_used_at: s.last_active_at,
             created_at: s.created_at,
             is_current: false, // Would need to track current session
         })

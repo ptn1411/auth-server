@@ -32,7 +32,8 @@ pub struct SessionResponse {
     pub device_name: Option<String>,
     pub device_type: Option<String>,
     pub ip_address: Option<String>,
-    pub last_active_at: DateTime<Utc>,
+    pub user_agent: Option<String>,
+    pub last_used_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub is_current: bool,
 }
