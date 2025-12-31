@@ -22,15 +22,25 @@ COPY sdk ./sdk
 WORKDIR /app/sdk
 RUN npm ci && npm run build
 
-# Copy frontend
+# Copy frontend package files
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (without symlinked sdk)
+RUN npm ci --ignore-scripts
 
-# Copy frontend source
-COPY frontend ./
+# Link local SDK
+RUN npm link ../sdk
+
+# Copy frontend source (exclude node_modules)
+COPY frontend/src ./src
+COPY frontend/public ./public
+COPY frontend/index.html ./
+COPY frontend/vite.config.ts ./
+COPY frontend/tsconfig*.json ./
+COPY frontend/components.json ./
+COPY frontend/eslint.config.js ./
+COPY frontend/.env* ./
 
 # Build frontend
 RUN npm run build

@@ -1,6 +1,9 @@
 # Build artifacts
 target/
-docker/
+
+# Node modules (rebuild in container)
+node_modules/
+frontend/node_modules/
 
 # Git
 .git/
@@ -20,8 +23,8 @@ docker/
 # Keys (should be mounted at runtime)
 keys/
 
-# SDK
-sdk/
+# SDK (keep for frontend build)
+# sdk/
 
 # Tests
 tests/

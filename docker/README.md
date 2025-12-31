@@ -2,7 +2,49 @@
 
 Hướng dẫn chạy Auth Server với Docker Compose.
 
-## Quick Start
+## Development với Domain Ảo (giống Laragon)
+
+Setup domain ảo cho dev environment:
+
+```bash
+# 1. Chạy script setup hosts (Run as Admin)
+scripts\setup-hosts.bat
+
+# 2. Start services
+docker-compose -f docker-compose.dev.yml up -d
+
+# 3. Truy cập
+# Frontend: http://auth.local
+# Backend:  http://api.auth.local
+```
+
+### Manual setup hosts (nếu không dùng script)
+
+Thêm vào `C:\Windows\System32\drivers\etc\hosts`:
+```
+127.0.0.1 auth.local
+127.0.0.1 api.auth.local
+```
+
+### Commands cho dev
+
+```bash
+# Start
+docker-compose -f docker-compose.dev.yml up -d
+
+# Logs
+docker-compose -f docker-compose.dev.yml logs -f
+
+# Stop
+docker-compose -f docker-compose.dev.yml down
+
+# Rebuild
+docker-compose -f docker-compose.dev.yml up -d --build
+```
+
+---
+
+## Quick Start (localhost)
 
 ### 1. Chuẩn bị
 
