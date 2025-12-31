@@ -1,0 +1,15 @@
+# Copy this file to .dev.vars and fill in your values
+
+# Auth Server URL
+AUTH_SERVER_URL=http://localhost:3000
+
+# OAuth Client credentials (create in Auth Server frontend)
+OAUTH_CLIENT_ID=your-client-id-here
+OAUTH_CLIENT_SECRET=your-client-secret-here
+
+# Redirect URI (must match what's registered in OAuth client)
+OAUTH_REDIRECT_URI=http://localhost:8787/callback
+
+# Allowed domains (comma-separated, supports wildcards)
+# Leave empty to allow all domains
+ALLOWED_DOMAINS=localhost:*,127.0.0.1:*,*.example.com

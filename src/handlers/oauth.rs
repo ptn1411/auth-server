@@ -297,7 +297,13 @@ pub async fn authorize_callback_handler(
         redirect_url.push_str(&format!("&state={}", urlencoding::encode(state)));
     }
 
-    Redirect::temporary(&redirect_url).into_response()
+    // Return JSON response for frontend to handle redirect
+    let response = serde_json::json!({
+        "status": "success",
+        "redirect_url": redirect_url
+    });
+
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 // ============================================================================
@@ -603,7 +609,7 @@ pub async fn list_scopes_handler(
 // Helper Functions
 // ============================================================================
 
-/// Build an error redirect response
+/// Build an error redirect response as JSON for frontend to handle
 fn build_error_redirect(
     redirect_uri: &str,
     error: &str,
@@ -621,7 +627,15 @@ fn build_error_redirect(
         url.push_str(&format!("&state={}", urlencoding::encode(s)));
     }
 
-    Redirect::temporary(&url).into_response()
+    // Return JSON response for frontend to handle redirect
+    let response = serde_json::json!({
+        "status": "error",
+        "error": error,
+        "error_description": description,
+        "redirect_url": url
+    });
+
+    (StatusCode::BAD_REQUEST, Json(response)).into_response()
 }
 
 /// Get error code from OAuthError

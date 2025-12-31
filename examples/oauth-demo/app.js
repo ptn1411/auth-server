@@ -21,6 +21,7 @@ let codeVerifier = null;
 // DOM Elements
 const elements = {
   authServerUrl: document.getElementById("auth-server-url"),
+  frontendUrl: document.getElementById("frontend-url"),
   clientId: document.getElementById("client-id"),
   redirectUri: document.getElementById("redirect-uri"),
   scopes: document.getElementById("scopes"),
@@ -144,8 +145,12 @@ async function startAuthorization() {
     code_challenge_method: "S256",
   });
 
-  const authUrl = `${authServerUrl}/oauth/authorize?${params.toString()}`;
-  log(`Authorization URL: ${authUrl}`, "info");
+  // Use frontend URL for the consent page (frontend handles auth + consent UI)
+  // Backend is only used for API calls (token exchange, userinfo, etc.)
+  const frontendUrl =
+    elements.frontendUrl?.value?.trim() || "http://localhost:5173";
+  const authUrl = `${frontendUrl}/oauth/authorize?${params.toString()}`;
+  log(`Authorization URL (Frontend): ${authUrl}`, "info");
 
   // Open popup
   const width = 500;

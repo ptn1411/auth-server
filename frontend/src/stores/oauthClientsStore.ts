@@ -203,19 +203,14 @@ export const useOAuthClientsStore = create<OAuthClientsStore>()((set) => ({
         body: JSON.stringify(params),
       });
       
-      if (response.redirected) {
-        set({ isLoading: false });
-        return response.url;
+      const data = await response.json();
+      
+      if (!response.ok || data.status === 'error') {
+        throw new Error(data.error_description || data.message || 'Consent submission failed');
       }
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error_description || errorData.message || 'Consent submission failed');
-      }
-      
-      const redirectUrl = response.headers.get('Location');
       set({ isLoading: false });
-      return redirectUrl || '';
+      return data.redirect_url || '';
     } catch (error) {
       set({ error: handleApiError(error), isLoading: false });
       throw error;

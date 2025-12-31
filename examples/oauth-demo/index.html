@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OAuth2 Demo - Third Party App</title>
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <div class="container">
     <header>
@@ -21,12 +23,18 @@
         <input type="text" id="auth-server-url" value="http://localhost:3000" placeholder="http://localhost:3000">
       </div>
       <div class="form-group">
+        <label for="frontend-url">Frontend URL</label>
+        <input type="text" id="frontend-url" value="http://localhost:5173" placeholder="http://localhost:5173">
+      </div>
+      <div class="form-group">
         <label for="client-id">Client ID</label>
-        <input type="text" id="client-id" placeholder="Enter your OAuth Client ID">
+        <input type="text" id="client-id" value="4bc9603e-611b-41b5-ba7b-682836d1f89d"
+          placeholder="Enter your OAuth Client ID">
       </div>
       <div class="form-group">
         <label for="redirect-uri">Redirect URI</label>
-        <input type="text" id="redirect-uri" value="http://localhost:8080/callback.html" placeholder="http://localhost:8080/callback.html">
+        <input type="text" id="redirect-uri" value="http://localhost:8080/callback.html"
+          placeholder="http://localhost:8080/callback.html">
       </div>
       <div class="form-group">
         <label for="scopes">Scopes (space-separated)</label>
@@ -181,4 +189,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>

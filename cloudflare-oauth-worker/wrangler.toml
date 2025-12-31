@@ -1,0 +1,16 @@
+# Cloudflare Worker configuration for OAuth Proxy
+# This worker acts as an OAuth proxy for Sveltia CMS or similar applications
+
+name = "auth-server-oauth-proxy"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables (set these in Cloudflare dashboard or use wrangler secret)
+# AUTH_SERVER_URL = "https://your-auth-server.com"
+# OAUTH_CLIENT_ID = "your-client-id"
+# OAUTH_CLIENT_SECRET = "your-client-secret"
+# ALLOWED_DOMAINS = "*.example.com,localhost:*"
+
+[vars]
+# Default values (override in dashboard for production)
+AUTH_SERVER_URL = "http://localhost:3000"

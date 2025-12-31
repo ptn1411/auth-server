@@ -1,0 +1,14 @@
+{
+  "name": "auth-server-oauth-proxy",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker OAuth proxy for Auth Server",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
