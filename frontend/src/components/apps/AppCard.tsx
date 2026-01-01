@@ -19,16 +19,16 @@ interface AppCardProps {
 export function AppCard({ app, onViewDetails, onRegenerateSecret }: AppCardProps) {
   return (
     <Card className="hover:shadow-md transition-shadow">
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              {app.name}
-              <Badge variant="secondary" className="text-xs font-mono">
+      <CardHeader className="pb-3 sm:pb-6">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1 min-w-0 flex-1">
+            <CardTitle className="flex items-center gap-2 flex-wrap text-sm sm:text-base">
+              <span className="truncate">{app.name}</span>
+              <Badge variant="secondary" className="text-xs font-mono shrink-0">
                 {app.code}
               </Badge>
             </CardTitle>
-            <CardDescription className="font-mono text-xs">
+            <CardDescription className="font-mono text-xs truncate">
               ID: {app.id}
             </CardDescription>
           </div>
@@ -53,7 +53,7 @@ export function AppCard({ app, onViewDetails, onRegenerateSecret }: AppCardProps
           </CardAction>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         <Button
           variant="outline"
           className="w-full"

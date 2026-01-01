@@ -38,12 +38,12 @@ export function RecentActivity() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="h-5 w-5" />
+      <CardHeader className="pb-3 sm:pb-6">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+          <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
           Recent Activity
         </CardTitle>
-        <CardDescription>Your latest account activity</CardDescription>
+        <CardDescription className="text-xs sm:text-sm">Your latest account activity</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -55,19 +55,19 @@ export function RecentActivity() {
         ) : logs.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">No recent activity</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {logs.map((log) => (
               <div
                 key={log.id}
-                className="flex items-start justify-between border-b pb-3 last:border-0 last:pb-0"
+                className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-4 border-b pb-3 last:border-0 last:pb-0"
               >
-                <div className="space-y-1">
+                <div className="space-y-0.5 sm:space-y-1 min-w-0 flex-1">
                   <p className="text-sm font-medium">{formatAction(log.action)}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground truncate">
                     {log.ip_address && `IP: ${log.ip_address}`}
                   </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground whitespace-nowrap">
                   {formatDate(log.created_at)}
                 </p>
               </div>

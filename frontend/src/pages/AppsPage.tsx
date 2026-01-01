@@ -43,18 +43,18 @@ export function AppsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Package className="h-8 w-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <Package className="h-6 w-6 sm:h-8 sm:w-8" />
             My Apps
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Manage your external applications and integrations
           </p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
+        <Button onClick={() => setCreateDialogOpen(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Create App
         </Button>

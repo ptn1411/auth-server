@@ -115,22 +115,64 @@ export function PasskeyList() {
     return new Date(dateString).toLocaleString();
   };
 
+  // Mobile card view for passkey
+  const MobilePasskeyCard = ({ passkey }: { passkey: PasskeyResponse }) => (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <Key className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium text-sm">
+            {passkey.device_name || 'Unnamed Passkey'}
+          </span>
+        </div>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => openRenameDialog(passkey)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => openDeleteDialog(passkey)}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+        <div>
+          <span className="block text-muted-foreground/70">Created</span>
+          <span>{formatDate(passkey.created_at)}</span>
+        </div>
+        <div>
+          <span className="block text-muted-foreground/70">Last used</span>
+          <span>{formatDate(passkey.last_used_at)}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!isSupported) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Key className="h-4 w-4 sm:h-5 sm:w-5" />
             Passkeys
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Passwordless authentication using biometrics or security keys
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
-            <AlertCircle className="h-5 w-5" />
-            <p>WebAuthn is not supported in this browser. Please use a modern browser to manage passkeys.</p>
+          <div className="flex items-start gap-2 text-amber-600 dark:text-amber-500">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <p className="text-sm">WebAuthn is not supported in this browser. Please use a modern browser to manage passkeys.</p>
           </div>
         </CardContent>
       </Card>
@@ -140,18 +182,18 @@ export function PasskeyList() {
   return (
     <>
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-3 sm:pb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Key className="h-4 w-4 sm:h-5 sm:w-5" />
                 Passkeys
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm">
                 Passwordless authentication using biometrics or security keys
               </CardDescription>
             </div>
-            <Button onClick={() => setShowRegisterDialog(true)}>
+            <Button onClick={() => setShowRegisterDialog(true)} className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Add Passkey
             </Button>
@@ -163,56 +205,68 @@ export function PasskeyList() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : passkeys.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">
+            <p className="text-center text-sm text-muted-foreground py-4">
               No passkeys registered. Add a passkey for passwordless login.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Last Used</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Mobile view - Card list */}
+              <div className="space-y-3 md:hidden">
                 {passkeys.map((passkey) => (
-                  <TableRow key={passkey.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Key className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">
-                          {passkey.device_name || 'Unnamed Passkey'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDate(passkey.created_at)}</TableCell>
-                    <TableCell>{formatDate(passkey.last_used_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => openRenameDialog(passkey)}
-                          title="Rename passkey"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => openDeleteDialog(passkey)}
-                          title="Delete passkey"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <MobilePasskeyCard key={passkey.id} passkey={passkey} />
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* Desktop view - Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Last Used</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {passkeys.map((passkey) => (
+                      <TableRow key={passkey.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">
+                              {passkey.device_name || 'Unnamed Passkey'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDate(passkey.created_at)}</TableCell>
+                        <TableCell>{formatDate(passkey.last_used_at)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openRenameDialog(passkey)}
+                              title="Rename passkey"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openDeleteDialog(passkey)}
+                              title="Delete passkey"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -242,11 +296,12 @@ export function PasskeyList() {
               Are you sure you want to delete this passkey? You won't be able to use it for authentication anymore.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => setShowDeleteDialog(false)}
               disabled={isDeleting}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -254,6 +309,7 @@ export function PasskeyList() {
               variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting}
+              className="w-full sm:w-auto"
             >
               {isDeleting ? (
                 <>
@@ -288,17 +344,19 @@ export function PasskeyList() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => setShowRenameDialog(false)}
               disabled={isRenaming}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
             <Button
               onClick={handleRename}
               disabled={isRenaming || !newName.trim()}
+              className="w-full sm:w-auto"
             >
               {isRenaming ? (
                 <>

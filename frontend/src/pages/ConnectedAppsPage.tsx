@@ -12,13 +12,13 @@ export function ConnectedAppsPage() {
   }, [fetchConnectedApps, clearError]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Link2 className="h-8 w-8" />
+        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+          <Link2 className="h-6 w-6 sm:h-8 sm:w-8" />
           Connected Apps
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Manage third-party applications that have access to your account
         </p>
       </div>

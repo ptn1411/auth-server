@@ -36,15 +36,15 @@ export function DashboardStats() {
   ] as const;
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
         <Card key={stat.title}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-            <stat.icon className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">{stat.title}</CardTitle>
+            <stat.icon className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <Badge variant={stat.variant}>{stat.value}</Badge>
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <Badge variant={stat.variant} className="text-xs">{stat.value}</Badge>
           </CardContent>
         </Card>
       ))}

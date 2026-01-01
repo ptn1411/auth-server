@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { BottomNav } from './BottomNav';
 import { useAuthStore } from '@/stores/authStore';
 
 export function Layout() {
@@ -20,10 +21,13 @@ export function Layout() {
           <Sidebar open={sidebarOpen} onClose={closeSidebar} />
         )}
         
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
           <Outlet />
         </main>
       </div>
+      
+      {/* Bottom navigation for mobile */}
+      {isAuthenticated && <BottomNav />}
     </div>
   );
 }

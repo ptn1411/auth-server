@@ -146,11 +146,57 @@ export function SessionList() {
     );
   }
 
+  // Mobile card view component
+  const MobileSessionCard = ({ session, index }: { session: Session; index: number }) => {
+    const { device, browser } = parseUserAgent(session.user_agent);
+    const isCurrentSession = index === 0;
+
+    return (
+      <div className="border rounded-lg p-4 space-y-3">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <DeviceIcon userAgent={session.user_agent} />
+            <div>
+              <div className="font-medium flex items-center gap-2 flex-wrap">
+                {device} - {browser}
+                {isCurrentSession && (
+                  <Badge variant="secondary" className="text-xs">
+                    Current
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+          {!isCurrentSession && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => openRevokeDialog(session)}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          )}
+        </div>
+        
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Globe className="h-3 w-3" />
+            <span className="truncate">{session.ip_address || 'Unknown'}</span>
+          </div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span className="truncate">{formatDate(session.last_used_at)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Monitor className="h-5 w-5" />
@@ -165,6 +211,7 @@ export function SessionList() {
                 variant="destructive"
                 size="sm"
                 onClick={() => setRevokeAllDialogOpen(true)}
+                className="w-full sm:w-auto"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Revoke All Other
@@ -178,72 +225,84 @@ export function SessionList() {
               No active sessions found
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Device</TableHead>
-                  <TableHead>IP Address</TableHead>
-                  <TableHead>Last Activity</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sessions.map((session, index) => {
-                  const { device, browser } = parseUserAgent(session.user_agent);
-                  const isCurrentSession = index === 0;
-                  
-                  return (
-                    <TableRow key={session.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <DeviceIcon userAgent={session.user_agent} />
-                          <div>
-                            <div className="font-medium flex items-center gap-2">
-                              {device} - {browser}
-                              {isCurrentSession && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Current
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                              {session.user_agent || 'Unknown'}
-                            </div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-muted-foreground" />
-                          {session.ip_address || 'Unknown'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          {formatDate(session.last_used_at)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {formatDate(session.created_at)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => openRevokeDialog(session)}
-                          disabled={isCurrentSession}
-                          title={isCurrentSession ? 'Cannot revoke current session' : 'Revoke session'}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+            <>
+              {/* Mobile view - Card list */}
+              <div className="space-y-3 md:hidden">
+                {sessions.map((session, index) => (
+                  <MobileSessionCard key={session.id} session={session} index={index} />
+                ))}
+              </div>
+
+              {/* Desktop view - Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Device</TableHead>
+                      <TableHead>IP Address</TableHead>
+                      <TableHead>Last Activity</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {sessions.map((session, index) => {
+                      const { device, browser } = parseUserAgent(session.user_agent);
+                      const isCurrentSession = index === 0;
+                      
+                      return (
+                        <TableRow key={session.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <DeviceIcon userAgent={session.user_agent} />
+                              <div>
+                                <div className="font-medium flex items-center gap-2">
+                                  {device} - {browser}
+                                  {isCurrentSession && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Current
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                  {session.user_agent || 'Unknown'}
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Globe className="h-4 w-4 text-muted-foreground" />
+                              {session.ip_address || 'Unknown'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-muted-foreground" />
+                              {formatDate(session.last_used_at)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {formatDate(session.created_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openRevokeDialog(session)}
+                              disabled={isCurrentSession}
+                              title={isCurrentSession ? 'Cannot revoke current session' : 'Revoke session'}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -257,11 +316,12 @@ export function SessionList() {
               Are you sure you want to revoke this session? The device will be logged out immediately.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => setRevokeDialogOpen(false)}
               disabled={isRevoking}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -269,6 +329,7 @@ export function SessionList() {
               variant="destructive"
               onClick={handleRevokeSession}
               disabled={isRevoking}
+              className="w-full sm:w-auto"
             >
               {isRevoking ? (
                 <>
@@ -292,11 +353,12 @@ export function SessionList() {
               Are you sure you want to revoke all other sessions? All devices except this one will be logged out immediately.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => setRevokeAllDialogOpen(false)}
               disabled={isRevoking}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -304,6 +366,7 @@ export function SessionList() {
               variant="destructive"
               onClick={handleRevokeAllOtherSessions}
               disabled={isRevoking}
+              className="w-full sm:w-auto"
             >
               {isRevoking ? (
                 <>

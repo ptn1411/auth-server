@@ -138,35 +138,36 @@ export function MfaSetup() {
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
             Two-Factor Authentication
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Add an extra layer of security to your account
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-1">
-              <p className="font-medium">TOTP Authenticator</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="font-medium text-sm sm:text-base">TOTP Authenticator</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Use an authenticator app like Google Authenticator or Authy
               </p>
             </div>
-            <Badge variant={user?.mfa_enabled ? 'default' : 'secondary'}>
+            <Badge variant={user?.mfa_enabled ? 'default' : 'secondary'} className="w-fit">
               {user?.mfa_enabled ? 'Enabled' : 'Disabled'}
             </Badge>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             {user?.mfa_enabled ? (
               <>
                 <Button
                   variant="outline"
                   onClick={handleRegenerateBackupCodes}
                   disabled={isRegenerating}
+                  className="w-full sm:w-auto"
                 >
                   {isRegenerating ? (
                     <>
@@ -183,12 +184,13 @@ export function MfaSetup() {
                 <Button
                   variant="destructive"
                   onClick={() => setShowDisableDialog(true)}
+                  className="w-full sm:w-auto"
                 >
                   Disable MFA
                 </Button>
               </>
             ) : (
-              <Button onClick={handleStartSetup} disabled={isLoading}>
+              <Button onClick={handleStartSetup} disabled={isLoading} className="w-full sm:w-auto">
                 {isLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -224,10 +226,10 @@ export function MfaSetup() {
                     <img
                       src={qrCodeDataUrl}
                       alt="QR Code"
-                      className="w-48 h-48"
+                      className="w-40 h-40 sm:w-48 sm:h-48"
                     />
                   ) : (
-                    <div className="w-48 h-48 flex items-center justify-center">
+                    <div className="w-40 h-40 sm:w-48 sm:h-48 flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
                   )}
@@ -240,7 +242,7 @@ export function MfaSetup() {
                   <Input
                     value={setupData.secret}
                     readOnly
-                    className="font-mono text-sm"
+                    className="font-mono text-xs sm:text-sm"
                   />
                   <Button
                     variant="outline"
@@ -270,17 +272,19 @@ export function MfaSetup() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={handleCloseSetupDialog}
               disabled={isVerifying}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
             <Button
               onClick={handleVerifySetup}
               disabled={verificationCode.length !== 6 || isVerifying}
+              className="w-full sm:w-auto"
             >
               {isVerifying ? (
                 <>
@@ -304,11 +308,12 @@ export function MfaSetup() {
               Are you sure you want to disable MFA? This will make your account less secure.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => setShowDisableDialog(false)}
               disabled={isDisabling}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -316,6 +321,7 @@ export function MfaSetup() {
               variant="destructive"
               onClick={handleDisableMfa}
               disabled={isDisabling}
+              className="w-full sm:w-auto"
             >
               {isDisabling ? (
                 <>
@@ -343,7 +349,7 @@ export function MfaSetup() {
           {backupCodes && <BackupCodes codes={backupCodes} />}
 
           <DialogFooter>
-            <Button onClick={handleCloseBackupCodesDialog}>
+            <Button onClick={handleCloseBackupCodesDialog} className="w-full sm:w-auto">
               I've Saved My Codes
             </Button>
           </DialogFooter>

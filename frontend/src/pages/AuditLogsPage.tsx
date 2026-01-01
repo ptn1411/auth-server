@@ -72,22 +72,43 @@ export function AuditLogsPage() {
     }
   };
 
+  // Mobile card view for audit log
+  const MobileLogCard = ({ log }: { log: AuditLog }) => (
+    <div className="border rounded-lg p-4 space-y-2">
+      <div className="font-medium text-sm">{formatAction(log.action)}</div>
+      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <Globe className="h-3 w-3" />
+          <span className="truncate">{log.ip_address || 'Unknown'}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          <span className="truncate">{formatDate(log.created_at)}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Monitor className="h-3 w-3 flex-shrink-0" />
+        <span className="truncate">{log.user_agent || 'Unknown'}</span>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Audit Logs</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl sm:text-3xl font-bold">Audit Logs</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">
           View your account activity history
         </p>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
             Activity History
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             A record of all actions performed on your account
           </CardDescription>
         </CardHeader>
@@ -102,51 +123,61 @@ export function AuditLogsPage() {
             </p>
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Action</TableHead>
-                    <TableHead>IP Address</TableHead>
-                    <TableHead>User Agent</TableHead>
-                    <TableHead>Timestamp</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        <div className="font-medium">
-                          {formatAction(log.action)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-muted-foreground" />
-                          {log.ip_address || 'Unknown'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Monitor className="h-4 w-4 text-muted-foreground" />
-                          <span className="truncate max-w-[200px]" title={log.user_agent || 'Unknown'}>
-                            {log.user_agent || 'Unknown'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          {formatDate(log.created_at)}
-                        </div>
-                      </TableCell>
+              {/* Mobile view - Card list */}
+              <div className="space-y-3 md:hidden">
+                {logs.map((log) => (
+                  <MobileLogCard key={log.id} log={log} />
+                ))}
+              </div>
+
+              {/* Desktop view - Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Action</TableHead>
+                      <TableHead>IP Address</TableHead>
+                      <TableHead>User Agent</TableHead>
+                      <TableHead>Timestamp</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell>
+                          <div className="font-medium">
+                            {formatAction(log.action)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-4 w-4 text-muted-foreground" />
+                            {log.ip_address || 'Unknown'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Monitor className="h-4 w-4 text-muted-foreground" />
+                            <span className="truncate max-w-[200px]" title={log.user_agent || 'Unknown'}>
+                              {log.user_agent || 'Unknown'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-muted-foreground" />
+                            {formatDate(log.created_at)}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 pt-4 border-t">
+                <p className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
                   Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total} entries
                 </p>
                 <div className="flex items-center gap-2">
@@ -156,11 +187,11 @@ export function AuditLogsPage() {
                     onClick={handlePreviousPage}
                     disabled={page <= 1 || isLoading}
                   >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Previous
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-1">Previous</span>
                   </Button>
-                  <span className="text-sm text-muted-foreground px-2">
-                    Page {page} of {totalPages}
+                  <span className="text-xs sm:text-sm text-muted-foreground px-2">
+                    {page} / {totalPages}
                   </span>
                   <Button
                     variant="outline"
@@ -168,8 +199,8 @@ export function AuditLogsPage() {
                     onClick={handleNextPage}
                     disabled={page >= totalPages || isLoading}
                   >
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-1" />
+                    <span className="hidden sm:inline mr-1">Next</span>
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

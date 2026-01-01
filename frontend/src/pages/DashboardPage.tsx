@@ -38,38 +38,38 @@ export function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">
           Welcome back{user?.email ? `, ${user.email}` : ''}
         </p>
       </div>
 
       {/* User Profile Summary */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <User className="h-4 w-4 sm:h-5 sm:w-5" />
             Profile Summary
           </CardTitle>
-          <CardDescription>Your account information at a glance</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">Your account information at a glance</CardDescription>
         </CardHeader>
         <CardContent>
           {user && (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-lg font-medium">{user.email}</p>
+            <div className="flex flex-col gap-4">
+              <div className="space-y-2">
+                <p className="text-base sm:text-lg font-medium break-all">{user.email}</p>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant={user.email_verified ? 'default' : 'destructive'}>
+                  <Badge variant={user.email_verified ? 'default' : 'destructive'} className="text-xs">
                     {user.email_verified ? 'Email Verified' : 'Email Not Verified'}
                   </Badge>
-                  <Badge variant={user.mfa_enabled ? 'default' : 'secondary'}>
+                  <Badge variant={user.mfa_enabled ? 'default' : 'secondary'} className="text-xs">
                     {user.mfa_enabled ? 'MFA Enabled' : 'MFA Disabled'}
                   </Badge>
                 </div>
               </div>
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" className="w-full sm:w-auto">
                 <Link to="/profile">Edit Profile</Link>
               </Button>
             </div>
@@ -82,17 +82,17 @@ export function DashboardPage() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Quick Actions</h2>
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           {quickActions.map((action) => (
             <Card key={action.title} className="hover:bg-accent/50 transition-colors">
               <Link to={action.href}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
+                <CardHeader className="p-3 sm:p-6">
+                  <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                     <action.icon className="h-4 w-4" />
                     {action.title}
                   </CardTitle>
-                  <CardDescription>{action.description}</CardDescription>
+                  <CardDescription className="text-xs sm:text-sm hidden sm:block">{action.description}</CardDescription>
                 </CardHeader>
               </Link>
             </Card>

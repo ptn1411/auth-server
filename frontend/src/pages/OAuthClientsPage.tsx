@@ -241,14 +241,14 @@ export function OAuthClientsPage() {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Key className="h-8 w-8" />
+            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+              <Key className="h-6 w-6 sm:h-8 sm:w-8" />
               OAuth Clients
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm sm:text-base text-muted-foreground">
               Manage OAuth2 client applications
             </p>
           </div>
@@ -268,28 +268,109 @@ export function OAuthClientsPage() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+  // Mobile card view for OAuth client
+  const MobileClientCard = ({ client }: { client: OAuthClient }) => (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Key className="h-8 w-8" />
+          <div className="font-medium">{client.name}</div>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant={client.is_internal ? "secondary" : "default"} className="text-xs">
+              {client.is_internal ? "Internal" : "External"}
+            </Badge>
+            <Badge variant={client.is_active ? "default" : "destructive"} className="text-xs">
+              {client.is_active ? "Active" : "Inactive"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+      
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+            {client.client_id}
+          </code>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => handleCopy(client.client_id, "client_id")}>
+            <Copy className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      
+      <div className="text-xs text-muted-foreground">
+        {client.redirect_uris.slice(0, 1).map((uri, idx) => (
+          <div key={idx} className="flex items-center gap-1 truncate">
+            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate">{uri}</span>
+          </div>
+        ))}
+        {client.redirect_uris.length > 1 && (
+          <span>+{client.redirect_uris.length - 1} more</span>
+        )}
+      </div>
+      
+      <div className="flex items-center justify-between pt-2 border-t">
+        <span className="text-xs text-muted-foreground">
+          {formatDate(client.created_at)}
+        </span>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => handleEdit(client)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              setSelectedClient(client);
+              setRegenerateDialogOpen(true);
+            }}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive"
+            onClick={() => {
+              setSelectedClient(client);
+              setDeleteDialogOpen(true);
+            }}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <Key className="h-6 w-6 sm:h-8 sm:w-8" />
             OAuth Clients
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Manage OAuth2 client applications for third-party integrations
           </p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
+        <Button onClick={() => setCreateDialogOpen(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Create Client
         </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Registered Clients</CardTitle>
-          <CardDescription>
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="text-base sm:text-lg">Registered Clients</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
             OAuth2 clients that can request access to user data
           </CardDescription>
         </CardHeader>
@@ -301,7 +382,7 @@ export function OAuthClientsPage() {
           ) : clients.length === 0 ? (
             <div className="text-center py-8">
               <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
+              <p className="text-sm sm:text-base text-muted-foreground">
                 No OAuth clients registered yet
               </p>
               <Button
@@ -312,105 +393,117 @@ export function OAuthClientsPage() {
               </Button>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Client ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Redirect URIs</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Mobile view - Card list */}
+              <div className="space-y-3 md:hidden">
                 {clients.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell className="font-medium">{client.name}</TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                        {client.client_id.substring(0, 8)}...
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() =>
-                          handleCopy(client.client_id, "client_id")
-                        }>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={client.is_internal ? "secondary" : "default"}>
-                        {client.is_internal ? "Internal" : "External"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {client.redirect_uris.slice(0, 2).map((uri, idx) => (
-                          <span
-                            key={idx}
-                            className="text-xs text-muted-foreground flex items-center gap-1">
-                            <ExternalLink className="h-3 w-3" />
-                            {uri.length > 30
-                              ? `${uri.substring(0, 30)}...`
-                              : uri}
-                          </span>
-                        ))}
-                        {client.redirect_uris.length > 2 && (
-                          <span className="text-xs text-muted-foreground">
-                            +{client.redirect_uris.length - 2} more
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={client.is_active ? "default" : "destructive"}>
-                        {client.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(client.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(client)}
-                          title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedClient(client);
-                            setRegenerateDialogOpen(true);
-                          }}
-                          title="Regenerate Secret">
-                          <RefreshCw className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedClient(client);
-                            setDeleteDialogOpen(true);
-                          }}
-                          title="Delete"
-                          className="text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <MobileClientCard key={client.id} client={client} />
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* Desktop view - Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Client ID</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Redirect URIs</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clients.map((client) => (
+                      <TableRow key={client.id}>
+                        <TableCell className="font-medium">{client.name}</TableCell>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {client.client_id.substring(0, 8)}...
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() =>
+                              handleCopy(client.client_id, "client_id")
+                            }>
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={client.is_internal ? "secondary" : "default"}>
+                            {client.is_internal ? "Internal" : "External"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {client.redirect_uris.slice(0, 2).map((uri, idx) => (
+                              <span
+                                key={idx}
+                                className="text-xs text-muted-foreground flex items-center gap-1">
+                                <ExternalLink className="h-3 w-3" />
+                                {uri.length > 30
+                                  ? `${uri.substring(0, 30)}...`
+                                  : uri}
+                              </span>
+                            ))}
+                            {client.redirect_uris.length > 2 && (
+                              <span className="text-xs text-muted-foreground">
+                                +{client.redirect_uris.length - 2} more
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={client.is_active ? "default" : "destructive"}>
+                            {client.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDate(client.created_at)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEdit(client)}
+                              title="Edit">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedClient(client);
+                                setRegenerateDialogOpen(true);
+                              }}
+                              title="Regenerate Secret">
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedClient(client);
+                                setDeleteDialogOpen(true);
+                              }}
+                              title="Delete"
+                              className="text-destructive hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -468,13 +561,14 @@ export function OAuthClientsPage() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
-              onClick={() => setCreateDialogOpen(false)}>
+              onClick={() => setCreateDialogOpen(false)}
+              className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={isSubmitting}>
+            <Button onClick={handleCreate} disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
@@ -552,13 +646,14 @@ export function OAuthClientsPage() {
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               onClick={() => {
                 setSecretDialogOpen(false);
                 setNewClient(null);
                 setNewSecret(null);
-              }}>
+              }}
+              className="w-full sm:w-auto">
               Done
             </Button>
           </DialogFooter>
@@ -610,17 +705,18 @@ export function OAuthClientsPage() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setEditDialogOpen(false);
                 resetForm();
                 setSelectedClient(null);
-              }}>
+              }}
+              className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button onClick={handleUpdate} disabled={isSubmitting}>
+            <Button onClick={handleUpdate} disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
@@ -640,19 +736,21 @@ export function OAuthClientsPage() {
               action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setDeleteDialogOpen(false);
                 setSelectedClient(null);
-              }}>
+              }}
+              className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleDelete}
-              disabled={isSubmitting}>
+              disabled={isSubmitting}
+              className="w-full sm:w-auto">
               {isSubmitting && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
@@ -675,16 +773,17 @@ export function OAuthClientsPage() {
               immediately.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setRegenerateDialogOpen(false);
                 setSelectedClient(null);
-              }}>
+              }}
+              className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button onClick={handleRegenerateSecret} disabled={isSubmitting}>
+            <Button onClick={handleRegenerateSecret} disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
